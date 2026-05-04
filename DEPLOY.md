@@ -28,7 +28,7 @@ Ce que ça fait :
 1. Crée un venv `.venv/` si manquant.
 2. Installe PyInstaller + deps de build.
 3. Génère l'icône `assets/icon.ico` (multi-résolutions) depuis le logo PIL.
-4. Lance PyInstaller avec `ultimate_prompt_builder.spec`.
+4. Lance PyInstaller avec `alphabeast.spec`.
 5. Sortie : **`dist/UltimatePromptBuilder/UltimatePromptBuilder.exe`**
 
 Si ça plante, le message d'erreur exact s'affiche — la cause la plus fréquente
@@ -48,7 +48,7 @@ build_installer.bat
 Ce que ça fait :
 1. Vérifie qu'Inno Setup est installé.
 2. Lit la version depuis `updater.py` (ex: `1.2.0`).
-3. Compile `installer/ultimate_prompt_builder.iss`.
+3. Compile `installer/alphabeast.iss`.
 4. Sortie : **`installer_output/UltimatePromptBuilder_setup_1.2.0.exe`** (~30 Mo).
 
 Cet `.exe` est ce que tu vas distribuer (download direct + asset GitHub Release).
@@ -63,7 +63,7 @@ Cet `.exe` est ce que tu vas distribuer (download direct + asset GitHub Release)
 cd "C:\Users\jorda\OneDrive\Bureau\Triskell Studio\Prompts\ultimate_prompt_app"
 git init
 git add .
-git commit -m "Initial commit — Ultimate Prompt Builder v1.2.0"
+git commit -m "Initial commit — AlphaBeast v1.2.0"
 git branch -M main
 ```
 

@@ -1,4 +1,4 @@
-"""Smoke + unit tests for Ultimate Prompt Builder.
+"""Smoke + unit tests for AlphaBeast.
 
 Run: python test_app.py
 """

@@ -1,5 +1,5 @@
 /* ============================================================
-   Ultimate Prompt Builder — page de vente
+   AlphaBeast — page de vente
    Palette Triskell Studio · dark · responsive
    ============================================================ */
 
@@ -231,10 +231,27 @@ strong { color: var(--text-strong); font-weight: 700; }
   margin-bottom: 32px;
   max-width: 580px;
 }
+.hero__price {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-bottom: 22px;
+}
+.hero__price-amount {
+  font-family: var(--font-h);
+  font-size: 44px; font-weight: 800;
+  color: #FFFFFF;
+  letter-spacing: -.02em;
+  background: linear-gradient(110deg, var(--indigo) 0%, var(--violet) 60%, var(--orange) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+}
+.hero__price-note {
+  font-size: 13px; color: var(--muted);
+}
 .hero__cta {
   display: flex; gap: 12px; flex-wrap: wrap;
   margin-bottom: 28px;
 }
+.hero__cta button { font: inherit; cursor: pointer; }
 .hero__bullets {
   display: flex; gap: 22px; flex-wrap: wrap;
   font-size: 13px; color: var(--muted);

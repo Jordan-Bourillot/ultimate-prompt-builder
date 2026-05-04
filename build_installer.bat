@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ============================================================
-echo  Ultimate Prompt Builder - construction de l installeur
+echo  AlphaBeast - construction de l installeur
 echo ============================================================
 
 REM ---- Verifie que le .exe est deja construit ----
@@ -48,7 +48,7 @@ echo.
 echo Compilation de l installeur (1-2 min)...
 echo.
 
-"%ISCC%" /Qp /DMyAppVersion=!VER! installer\ultimate_prompt_builder.iss
+"%ISCC%" /Qp /DMyAppVersion=!VER! installer\alphabeast.iss
 if errorlevel 1 (
     echo.
     echo [ERREUR] Compilation echouee.

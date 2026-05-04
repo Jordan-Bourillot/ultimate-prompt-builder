@@ -1,4 +1,4 @@
-# Ultimate Prompt Builder
+# AlphaBeast
 
 Mini-app desktop Python (CustomTkinter, mode sombre) pour combiner ton prompt avec
 1+ des **16 Mega Prompts** de la "Bibliotheque de prompts auto-adresses" et envoyer

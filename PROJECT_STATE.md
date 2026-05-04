@@ -1,4 +1,4 @@
-# PROJECT_STATE — Ultimate Prompt Builder
+# PROJECT_STATE — AlphaBeast
 
 ## Vision
 App desktop locale Python qui combine un prompt utilisateur avec un ou plusieurs des

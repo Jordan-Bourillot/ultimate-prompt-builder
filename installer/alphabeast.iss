@@ -1,10 +1,10 @@
 ; ============================================================
-;  Ultimate Prompt Builder - installeur Windows (Inno Setup)
+;  AlphaBeast - installeur Windows (Inno Setup)
 ;  Compilation : double-cliquer sur build_installer.bat
 ;  Sortie : installer_output\UltimatePromptBuilder_setup_X.Y.Z.exe
 ; ============================================================
 
-#define MyAppName "Ultimate Prompt Builder"
+#define MyAppName "AlphaBeast"
 #ifndef MyAppVersion
   #define MyAppVersion "1.2.0"
 #endif
@@ -21,8 +21,8 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\Ultimate Prompt Builder
-DefaultGroupName=Ultimate Prompt Builder
+DefaultDirName={autopf}\AlphaBeast
+DefaultGroupName=AlphaBeast
 DisableProgramGroupPage=yes
 OutputDir=..\installer_output
 OutputBaseFilename=UltimatePromptBuilder_setup_{#MyAppVersion}

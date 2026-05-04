@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for Ultimate Prompt Builder.
+"""PyInstaller spec for AlphaBeast.
 
-Build:  pyinstaller ultimate_prompt_builder.spec --noconfirm
+Build:  pyinstaller alphabeast.spec --noconfirm
 Output: dist/UltimatePromptBuilder/UltimatePromptBuilder.exe
 """
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules

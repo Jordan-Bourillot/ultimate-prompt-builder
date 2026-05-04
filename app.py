@@ -1,4 +1,4 @@
-"""Ultimate Prompt Builder - main application.
+"""AlphaBeast - main application.
 
 Single-window CustomTkinter app to combine a user prompt with up to 16 mega prompts,
 copy the result, send it to an AI provider, browse history and saved prompts.
@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("app")
 
-APP_TITLE = "Ultimate Prompt Builder · Triskell Studio"
+APP_TITLE = "AlphaBeast · Triskell Studio"
 APP_W, APP_H = 1340, 880
 BRAND_NAME = "TRISKELL STUDIO"
 BRAND_VERSION = f"v{UPDATER_VERSION}"
@@ -41,8 +41,8 @@ PALETTE = {
     "tag_bg":        "#1A1A2E",
     "tag_bg_hover":  "#252540",
     "input_bg":      "#13131F",
-    "border":        "#252540",
-    "border_2":      "#252540",
+    "border":        "#3D3D5A",
+    "border_2":      "#4A4A66",
 
     # Brand triskell trio (the 3 spirals)
     "indigo":        "#6366F1",
@@ -166,33 +166,60 @@ def _load_brand_fonts() -> tuple[str, str]:
 
 
 def _apply_dark_titlebar(window) -> None:
-    """Force dark titlebar on Windows 10/11 via DWM. Call after window is mapped."""
+    """Force dark titlebar on Windows 10/11 via DWM. Tries both DWMA constants
+    (20 = Win 10 v1909+, 19 = Win 10 v1809-v1903). Re-applies once on map event
+    in case the first call lands before the HWND is real."""
     def do_it():
         try:
             import ctypes
             window.update_idletasks()
             hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
             value = ctypes.c_int(1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                ctypes.byref(value), ctypes.sizeof(value),
-            )
+            for attr in (20, 19):
+                rc = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, attr,
+                    ctypes.byref(value), ctypes.sizeof(value),
+                )
+                if rc == 0:
+                    break
+            # Force a redraw by toggling visibility briefly
+            try:
+                window.withdraw()
+                window.deiconify()
+            except Exception:
+                pass
         except Exception as exc:
             logger.debug("dark titlebar not applied: %s", exc)
     try:
-        window.after(10, do_it)
+        # Apply twice: once short for normal case, once after map for slow cases
+        window.after(50, do_it)
+        window.bind("<Map>", lambda _e: do_it(), add="+")
     except Exception:
         do_it()
 
 
-def _make_triskell_logo(size: int, bg_hex: str = "#08080F"):
-    """Render the Triskell Studio triskell mark (3 colored spirals + center dot).
+def _load_app_logo(size: int):
+    """Load the recolored chat-bubble logo at the requested size.
 
-    Mirrors the SVG path used on triskell-studio.fr:
-      M18,18 C20,15 22,10 20,6 C18,2 13,3 13,7.5 C13,12 16,15.5 18,18Z
-    rotated at 0/120/240 deg with indigo/violet/orange fills.
-    Renders 4x then downsamples for anti-aliasing.
+    Falls back to the generated triskell mark if the bundled PNG is missing.
+    """
+    from pathlib import Path
+    from PIL import Image
+
+    logo_path = Path(__file__).parent / "assets" / "logo.png"
+    if logo_path.exists():
+        try:
+            img = Image.open(logo_path).convert("RGBA")
+            return img.resize((size, size), Image.LANCZOS)
+        except Exception:
+            pass
+    return _make_triskell_logo(size)
+
+
+def _make_triskell_logo(size: int, bg_hex: str = "#08080F"):
+    """Fallback : render the Triskell triskell mark (3 colored spirals + center dot).
+
+    Used only when assets/logo.png is missing. Path mirrors triskell-studio.fr.
     """
     import math
     from PIL import Image, ImageDraw
@@ -239,17 +266,18 @@ def _make_triskell_logo(size: int, bg_hex: str = "#08080F"):
 
 
 class TagWidget(ctk.CTkFrame):
-    """A chip representing a selected mega prompt. Click name to preview, x to remove."""
+    """A chip with name + tagline. Click name/tagline to preview, x to remove."""
 
     def __init__(self, master, mp: dict, on_remove, on_preview):
         super().__init__(
             master,
             corner_radius=14,
             fg_color=PALETTE["tag_bg"],
-            border_width=0,
+            border_width=1,
+            border_color=PALETTE["border_2"],
         )
         self.mp = mp
-        # Color the id badge with brand accent
+
         badge = ctk.CTkLabel(
             self,
             text=f" {mp['id']} ",
@@ -258,17 +286,34 @@ class TagWidget(ctk.CTkFrame):
             corner_radius=8,
             font=(RESOLVED_BODY, 10, "bold"),
         )
-        badge.pack(side="left", padx=(6, 4), pady=4)
-        label = ctk.CTkLabel(
-            self,
+        badge.pack(side="left", padx=(8, 8), pady=8)
+        badge.bind("<Button-1>", lambda _e: on_preview(mp))
+
+        text_block = ctk.CTkFrame(self, fg_color="transparent", cursor="hand2")
+        text_block.pack(side="left", padx=(0, 6), pady=4)
+        name_lbl = ctk.CTkLabel(
+            text_block,
             text=mp["name"],
             text_color=PALETTE["tag_fg"],
             font=(RESOLVED_BODY, 12, "bold"),
+            anchor="w",
             cursor="hand2",
         )
-        label.pack(side="left", padx=(0, 4), pady=4)
-        label.bind("<Button-1>", lambda _e: on_preview(mp))
-        badge.bind("<Button-1>", lambda _e: on_preview(mp))
+        name_lbl.pack(anchor="w")
+        if mp.get("tagline"):
+            tagline_lbl = ctk.CTkLabel(
+                text_block,
+                text=mp["tagline"],
+                text_color=PALETTE["muted"],
+                font=(RESOLVED_BODY, 10),
+                anchor="w",
+                cursor="hand2",
+            )
+            tagline_lbl.pack(anchor="w")
+            tagline_lbl.bind("<Button-1>", lambda _e: on_preview(mp))
+        text_block.bind("<Button-1>", lambda _e: on_preview(mp))
+        name_lbl.bind("<Button-1>", lambda _e: on_preview(mp))
+
         btn = ctk.CTkButton(
             self,
             text="✕",
@@ -304,8 +349,8 @@ class AboutWindow(ctk.CTkToplevel):
         # Big triskell logo
         try:
             self._logo_img_about = ctk.CTkImage(
-                light_image=_make_triskell_logo(96, PALETTE["bg"]),
-                dark_image=_make_triskell_logo(96, PALETTE["bg"]),
+                light_image=_load_app_logo(96),
+                dark_image=_load_app_logo(96),
                 size=(96, 96),
             )
             ctk.CTkLabel(wrap, image=self._logo_img_about, text="").pack(pady=(36, 0))
@@ -331,7 +376,7 @@ class AboutWindow(ctk.CTkToplevel):
         ).pack(side="left", pady=(11, 0))
 
         ctk.CTkLabel(
-            wrap, text="Ultimate Prompt Builder",
+            wrap, text="AlphaBeast",
             font=(RESOLVED_DISPLAY, 18, "bold"),
             text_color=PALETTE["text"],
         ).pack(pady=(14, 0))
@@ -1213,8 +1258,8 @@ class App(ctk.CTk):
         # Triskell logo (3 spirals) rendered via PIL
         try:
             self._logo_img_topbar = ctk.CTkImage(
-                light_image=_make_triskell_logo(38, PALETTE["bg"]),
-                dark_image=_make_triskell_logo(38, PALETTE["bg"]),
+                light_image=_load_app_logo(38),
+                dark_image=_load_app_logo(38),
                 size=(38, 38),
             )
             logo = ctk.CTkLabel(
@@ -1250,7 +1295,7 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             text_block,
-            text=f"Ultimate Prompt Builder  ·  {BRAND_VERSION}",
+            text=f"AlphaBeast  ·  {BRAND_VERSION}",
             font=(RESOLVED_BODY, 10),
             text_color=PALETTE["muted_dim"],
             anchor="w",
@@ -1384,14 +1429,21 @@ class App(ctk.CTk):
             text_color=PALETTE["muted"],
         ).grid(row=3, column=0, sticky="w", padx=(46, 14), pady=(2, 4))
 
-        presets_row = ctk.CTkScrollableFrame(
-            left, height=52, corner_radius=8, fg_color=PALETTE["panel_card"],
-            orientation="horizontal",
+        presets_row = ctk.CTkFrame(
+            left, corner_radius=8, fg_color=PALETTE["panel_card"],
         )
         presets_row.grid(row=4, column=0, sticky="ew", padx=(46, 14), pady=(0, 6))
+        # 2 rows of preset chips so the 7 chips never overflow / never scroll
+        per_row = 4
+        preset_rows: list[ctk.CTkFrame] = []
 
         for i, preset in enumerate(PRESETS):
-            # Triskell house preset (Production de sites) gets the orange brand spiral color
+            if i % per_row == 0:
+                rf = ctk.CTkFrame(presets_row, fg_color="transparent")
+                rf.pack(fill="x", padx=4, pady=2)
+                preset_rows.append(rf)
+            # Triskell house preset (Production de sites) stays solid orange
+            # to remain the visual hero. All others use a subtle outlined style.
             is_triskell = preset["name"] == "Production de sites"
             if is_triskell:
                 fg = PALETTE["orange"]
@@ -1400,13 +1452,13 @@ class App(ctk.CTk):
                 text_color = "#FFFFFF"
                 label = "◆  " + preset["name"]
             else:
-                fg = PALETTE["accent"]
-                hover = PALETTE["accent_hover"]
-                border_color = PALETTE["accent"]
-                text_color = "#FFFFFF"
+                fg = "transparent"
+                hover = PALETTE["tag_bg_hover"]
+                border_color = PALETTE["border_2"]
+                text_color = PALETTE["text"]
                 label = preset["name"]
             btn = ctk.CTkButton(
-                presets_row,
+                preset_rows[-1],
                 text=label,
                 width=10,
                 height=36,
@@ -1415,10 +1467,11 @@ class App(ctk.CTk):
                 fg_color=fg,
                 hover_color=hover,
                 text_color=text_color,
-                border_width=0,
+                border_width=1,
+                border_color=border_color,
                 command=lambda p=preset: self._apply_preset(p),
             )
-            btn.pack(side="left", padx=5, pady=6)
+            btn.pack(side="left", padx=5, pady=4, fill="x", expand=True)
 
         # Mega selector row
         sel_row = ctk.CTkFrame(left, fg_color="transparent")
@@ -1433,7 +1486,7 @@ class App(ctk.CTk):
         ).grid(row=0, column=0, sticky="w", columnspan=3)
 
         mega_names = [
-            f"[{mp.get('category', 'Autre')}]  {mp['id']}  ·  {mp['name']}"
+            f"{mp['id']}  ·  {mp['name']}  —  {mp.get('tagline', '')}"
             for mp in self.mega_prompts
         ]
         self._mega_label_to_id = {
@@ -1446,11 +1499,16 @@ class App(ctk.CTk):
             sel_row,
             values=mega_names or ["(aucun)"],
             variable=self.mega_var,
-            width=380,
-            height=34,
+            width=560,
+            height=36,
+            font=(RESOLVED_BODY, 12),
+            dropdown_font=(RESOLVED_BODY, 12),
             fg_color=PALETTE["tag_bg"],
             button_color=PALETTE["accent"],
             button_hover_color=PALETTE["accent_hover"],
+            dropdown_fg_color=PALETTE["panel_card"],
+            dropdown_text_color=PALETTE["text"],
+            dropdown_hover_color=PALETTE["accent_dim"],
         )
         self.mega_dropdown.grid(row=1, column=0, sticky="w", pady=(4, 0))
         ctk.CTkButton(
@@ -1458,11 +1516,13 @@ class App(ctk.CTk):
             text="+  Ajouter",
             width=110,
             height=34,
-            fg_color=PALETTE["accent"],
-            hover_color=PALETTE["accent_hover"],
+            font=(RESOLVED_BODY, 12, "bold"),
+            fg_color="transparent",
+            text_color=PALETTE["accent"],
+            hover_color=PALETTE["tag_bg_hover"],
             command=self._on_add_mega,
             border_width=1,
-            border_color=PALETTE["border_2"],
+            border_color=PALETTE["accent"],
         ).grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
         ctk.CTkButton(
             sel_row,
@@ -1523,11 +1583,11 @@ class App(ctk.CTk):
         self.generate_btn = ctk.CTkButton(
             actions,
             text="✨   Generer    (Ctrl+Enter)",
-            height=48,
-            font=(RESOLVED_BODY, 14, "bold"),
+            height=44,
+            font=(RESOLVED_DISPLAY, 14, "bold"),
             text_color="#FFFFFF",
-            fg_color=PALETTE["accent"],
-            hover_color=PALETTE["accent_hover"],
+            fg_color=PALETTE["accent_dim"],
+            hover_color=PALETTE["accent"],
             command=self._on_generate,
             border_width=1,
             border_color=PALETTE["border_2"],
@@ -1695,8 +1755,8 @@ class App(ctk.CTk):
 
         try:
             self._logo_img_footer = ctk.CTkImage(
-                light_image=_make_triskell_logo(18, PALETTE["bg"]),
-                dark_image=_make_triskell_logo(18, PALETTE["bg"]),
+                light_image=_load_app_logo(18),
+                dark_image=_load_app_logo(18),
                 size=(18, 18),
             )
             ctk.CTkLabel(footer_left, image=self._logo_img_footer, text="").pack(
@@ -1790,19 +1850,19 @@ class App(ctk.CTk):
             )
             empty.pack(anchor="w", padx=12, pady=18)
             return
-        per_row = 3
+        per_row = 2
         row_frames: list[ctk.CTkFrame] = []
         for i, mp in enumerate(self.selected_megas):
             if i % per_row == 0:
                 rf = ctk.CTkFrame(self.tags_frame, fg_color="transparent")
-                rf.pack(fill="x", padx=4, pady=2)
+                rf.pack(fill="x", padx=4, pady=3)
                 row_frames.append(rf)
             TagWidget(
                 row_frames[-1],
                 mp,
                 on_remove=self._remove_mega,
                 on_preview=self._preview_mega,
-            ).pack(side="left", padx=4, pady=2)
+            ).pack(side="left", padx=4, pady=2, fill="x", expand=True)
 
     def _apply_preset(self, preset: dict) -> None:
         self.selected_megas = [m for m in self.mega_prompts if m["id"] in preset["ids"]]
@@ -2039,7 +2099,7 @@ class App(ctk.CTk):
 
     def _refresh_mega_dropdown(self) -> None:
         mega_names = [
-            f"[{mp.get('category', 'Autre')}]  {mp['id']}  ·  {mp['name']}"
+            f"{mp['id']}  ·  {mp['name']}  —  {mp.get('tagline', '')}"
             for mp in self.mega_prompts
         ]
         self._mega_label_to_id = {

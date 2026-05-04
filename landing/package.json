@@ -1,10 +1,13 @@
 {
-  "name": "ultimate-prompt-builder-landing",
+  "name": "alphabeast-landing",
   "version": "1.0.0",
-  "description": "Landing minimaliste Ultimate Prompt Builder",
+  "description": "Landing minimaliste AlphaBeast",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "stripe": "^17.0.0"
   }
 }

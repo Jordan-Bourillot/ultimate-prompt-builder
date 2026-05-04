@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ============================================================
-echo  Ultimate Prompt Builder - construction de l executable
+echo  AlphaBeast - construction de l executable
 echo ============================================================
 
 REM ---- Detection Python ----
@@ -63,7 +63,7 @@ REM ---- Lance PyInstaller ----
 echo.
 echo Construction en cours (1-3 min selon la machine)...
 echo.
-pyinstaller ultimate_prompt_builder.spec --noconfirm
+pyinstaller alphabeast.spec --noconfirm
 if errorlevel 1 (
     echo [ERREUR] PyInstaller a echoue.
     pause

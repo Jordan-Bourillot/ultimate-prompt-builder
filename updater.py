@@ -1,4 +1,4 @@
-"""Auto-updater pour Ultimate Prompt Builder.
+"""Auto-updater pour AlphaBeast.
 
 Mirrors the Studio PDF / DéliNote pattern (electron-updater style en pur Python).
 
@@ -197,8 +197,9 @@ class _Updater:
                     return
 
             tag = latest.get("tag_name", "") if isinstance(latest, dict) else ""
+            clean_tag = tag.lstrip("vV")
             if not is_newer(tag, APP_VERSION):
-                self._set(phase="not-available", next_version=tag)
+                self._set(phase="not-available", next_version=clean_tag)
                 return
 
             installer_asset = None
