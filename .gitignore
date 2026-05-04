@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build output
+build/
+dist/
+installer_output/
+*.spec.bak
+
+# User data (don't commit secrets!)
+settings.json
+history.json
+saved_prompts.json
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Generated
+assets/icon.ico
+assets/icon.png
+biblio.txt
+
+# Landing local
+landing/node_modules/
+landing/.netlify/
+landing/_dl/

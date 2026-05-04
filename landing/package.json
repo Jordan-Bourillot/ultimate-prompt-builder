@@ -1,0 +1,10 @@
+{
+  "name": "ultimate-prompt-builder-landing",
+  "version": "1.0.0",
+  "description": "Landing minimaliste Ultimate Prompt Builder",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "deploy": "netlify deploy --prod"
+  }
+}
