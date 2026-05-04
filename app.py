@@ -331,6 +331,140 @@ class TagWidget(ctk.CTkFrame):
         btn.pack(side="left", padx=(2, 6), pady=4)
 
 
+class WelcomeWindow(ctk.CTkToplevel):
+    """First-launch onboarding modal — quick intro to the product."""
+
+    def __init__(self, master, on_close):
+        super().__init__(master)
+        self.title("Bienvenue dans AlphaBeast")
+        self.geometry("680x720")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+        self.configure(fg_color=PALETTE["bg"])
+        _apply_dark_titlebar(self)
+        self._on_close = on_close
+
+        wrap = ctk.CTkFrame(self, fg_color=PALETTE["bg"])
+        wrap.pack(fill="both", expand=True)
+
+        try:
+            self._logo_img = ctk.CTkImage(
+                light_image=_load_app_logo(80),
+                dark_image=_load_app_logo(80),
+                size=(80, 80),
+            )
+            ctk.CTkLabel(wrap, image=self._logo_img, text="").pack(pady=(28, 8))
+        except Exception:
+            ctk.CTkLabel(
+                wrap, text="◆",
+                font=(RESOLVED_DISPLAY, 56, "bold"),
+                text_color=PALETTE["violet"],
+            ).pack(pady=(28, 8))
+
+        ctk.CTkLabel(
+            wrap, text="Bienvenue dans AlphaBeast",
+            font=(RESOLVED_DISPLAY, 24, "bold"),
+            text_color="#FFFFFF",
+        ).pack(pady=(4, 4))
+        ctk.CTkLabel(
+            wrap, text="Sors tes IA du mode validation par defaut.",
+            font=(RESOLVED_BODY, 13),
+            text_color=PALETTE["muted"],
+        ).pack(pady=(0, 18))
+
+        steps_frame = ctk.CTkFrame(wrap, fg_color="transparent")
+        steps_frame.pack(fill="x", padx=32, pady=4)
+
+        steps = [
+            ("1", "Ecris ton prompt",
+             "Une demande, un brief, une question - tout ce que tu veux envoyer a une IA."),
+            ("2", "Pioche un preset (ou des Mega Prompts)",
+             "Production de sites · Build d'app · Decision strategique · Recherche & veille…"),
+            ("3", "Genere et envoie",
+             "Le Prompt Ultime est genere, puis envoye a Claude / GPT / Gemini / Mistral / Grok."),
+        ]
+        for num, title, desc in steps:
+            row = ctk.CTkFrame(
+                steps_frame, fg_color=PALETTE["panel_card"],
+                border_width=1, border_color=PALETTE["border_2"],
+                corner_radius=12,
+            )
+            row.pack(fill="x", pady=5)
+            inner = ctk.CTkFrame(row, fg_color="transparent")
+            inner.pack(fill="x", padx=14, pady=12)
+            ctk.CTkLabel(
+                inner, text=f" {num} ",
+                font=(RESOLVED_BODY, 12, "bold"),
+                text_color="#FFFFFF",
+                fg_color=PALETTE["accent"], corner_radius=12,
+            ).pack(side="left", padx=(0, 12))
+            txt = ctk.CTkFrame(inner, fg_color="transparent")
+            txt.pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(
+                txt, text=title,
+                font=(RESOLVED_BODY, 13, "bold"),
+                text_color="#FFFFFF",
+                anchor="w",
+            ).pack(fill="x", anchor="w")
+            ctk.CTkLabel(
+                txt, text=desc,
+                font=(RESOLVED_BODY, 11),
+                text_color=PALETTE["muted"],
+                anchor="w", justify="left", wraplength=520,
+            ).pack(fill="x", anchor="w", pady=(2, 0))
+
+        tip = ctk.CTkFrame(
+            wrap, fg_color=PALETTE["accent_dim"],
+            corner_radius=10, border_width=1, border_color=PALETTE["accent"],
+        )
+        tip.pack(fill="x", padx=32, pady=(18, 4))
+        ctk.CTkLabel(
+            tip,
+            text="💡  Astuce : configure d'abord ta cle API dans Parametres pour pouvoir envoyer a l'IA. Sinon tu peux juste generer + copier le prompt et le coller ailleurs.",
+            font=(RESOLVED_BODY, 11),
+            text_color="#FFFFFF",
+            wraplength=560, justify="left",
+        ).pack(padx=14, pady=10)
+
+        bar = ctk.CTkFrame(wrap, fg_color="transparent")
+        bar.pack(side="bottom", fill="x", padx=32, pady=(20, 24))
+        ctk.CTkButton(
+            bar, text="Ouvrir Parametres",
+            width=170, height=42,
+            font=(RESOLVED_BODY, 12, "bold"),
+            text_color=PALETTE["text"],
+            fg_color="transparent",
+            hover_color=PALETTE["tag_bg"],
+            border_width=1, border_color=PALETTE["text"],
+            command=self._open_settings,
+        ).pack(side="left")
+        ctk.CTkButton(
+            bar, text="C'est parti  →",
+            width=170, height=42,
+            font=(RESOLVED_BODY, 13, "bold"),
+            text_color="#FFFFFF",
+            fg_color=PALETTE["accent"],
+            hover_color=PALETTE["accent_hover"],
+            border_width=1, border_color=PALETTE["border_2"],
+            command=self._dismiss,
+        ).pack(side="right")
+        self.bind("<Escape>", lambda _e: self._dismiss())
+        self.bind("<Return>", lambda _e: self._dismiss())
+
+    def _dismiss(self):
+        try:
+            self._on_close(open_settings=False)
+        finally:
+            self.destroy()
+
+    def _open_settings(self):
+        try:
+            self._on_close(open_settings=True)
+        finally:
+            self.destroy()
+
+
 class AboutWindow(ctk.CTkToplevel):
     """Branded About dialog with clickable website link."""
 
@@ -1062,15 +1196,46 @@ class SettingsWindow(ctk.CTkToplevel):
 
 
 class ResponseWindow(ctk.CTkToplevel):
-    """Modal-ish window to display the AI response."""
+    """Polished modal showing the AI response with metadata header + actions."""
 
-    def __init__(self, master, title: str, content: str):
+    def __init__(self, master, title: str, content: str,
+                 provider_id: str = "", model: str = "", char_count: int = 0):
         super().__init__(master)
         self.title(title)
-        self.geometry("900x700")
+        self.geometry("960x740")
         self.transient(master)
         self.configure(fg_color=PALETTE["bg"])
         _apply_dark_titlebar(self)
+        self._content = content
+
+        # Header strip with provider + model + count
+        header = ctk.CTkFrame(self, fg_color=PALETTE["panel"], height=72, corner_radius=0)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        left = ctk.CTkFrame(header, fg_color="transparent")
+        left.pack(side="left", padx=18, pady=10)
+        ctk.CTkLabel(
+            left,
+            text="🤖  Reponse IA",
+            font=(RESOLVED_DISPLAY, 16, "bold"),
+            text_color="#FFFFFF",
+        ).pack(anchor="w")
+        provider_lbl = (
+            f"{provider_id}  ·  {model}" if provider_id and model
+            else "AI Response"
+        )
+        meta = f"{provider_lbl}  ·  {len(content)} caracteres  ·  ~{max(1, len(content)//4)} tokens"
+        ctk.CTkLabel(
+            left, text=meta,
+            font=(RESOLVED_BODY, 11),
+            text_color=PALETTE["muted"],
+        ).pack(anchor="w", pady=(2, 0))
+
+        border_line = ctk.CTkFrame(self, height=1, fg_color=PALETTE["border"], corner_radius=0)
+        border_line.pack(fill="x")
+
+        # Body
         textbox = ctk.CTkTextbox(
             self,
             font=(RESOLVED_BODY, 13),
@@ -1085,33 +1250,78 @@ class ResponseWindow(ctk.CTkToplevel):
         textbox.insert("1.0", content)
         textbox.configure(state="normal")
 
+        # Action bar
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.pack(fill="x", padx=16, pady=(0, 16))
 
         def copy() -> None:
             self.clipboard_clear()
-            self.clipboard_append(content)
-            messagebox.showinfo("Copie", "Reponse copiee dans le presse-papier.")
+            self.clipboard_append(self._content)
+            self.update()
+            # Brief visual feedback on the button
+            copy_btn.configure(text="✓  Copie !", fg_color=PALETTE["ok"])
+            self.after(1400, lambda: copy_btn.configure(
+                text="📋  Copier la reponse", fg_color=PALETTE["accent"]
+            ))
+
+        def export() -> None:
+            from datetime import datetime
+            path = filedialog.asksaveasfilename(
+                title="Exporter la reponse IA",
+                defaultextension=".md",
+                initialfile=f"reponse_{provider_id or 'ai'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                filetypes=[("Markdown", "*.md"), ("Texte", "*.txt"), ("Tout fichier", "*.*")],
+            )
+            if not path:
+                return
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self._content)
+                export_btn.configure(text="✓  Exporte !", fg_color=PALETTE["ok"])
+                self.after(1400, lambda: export_btn.configure(
+                    text="⤓  Exporter", fg_color=PALETTE["tag_bg"]
+                ))
+            except OSError as exc:
+                messagebox.showerror("Erreur", f"Export impossible: {exc}")
 
         ctk.CTkButton(
             bar,
-            text="Copier la reponse",
-            fg_color=PALETTE["accent"],
-            hover_color=PALETTE["accent_hover"],
-            command=copy,
-            border_width=1,
-            border_color=PALETTE["border_2"],
-        ).pack(side="right")
-        ctk.CTkButton(
-            bar,
             text="Fermer",
+            width=110, height=40,
+            font=(RESOLVED_BODY, 12, "bold"),
             fg_color="transparent",
             border_width=1,
             border_color=PALETTE["muted"],
             text_color=PALETTE["muted"],
             hover_color=PALETTE["tag_bg"],
             command=self.destroy,
-        ).pack(side="right", padx=(0, 8))
+        ).pack(side="left")
+        export_btn = ctk.CTkButton(
+            bar,
+            text="⤓  Exporter",
+            width=130, height=40,
+            font=(RESOLVED_BODY, 12, "bold"),
+            text_color=PALETTE["text"],
+            fg_color=PALETTE["tag_bg"],
+            hover_color=PALETTE["accent_hover"],
+            border_width=1, border_color=PALETTE["border_2"],
+            command=export,
+        )
+        export_btn.pack(side="right", padx=(8, 0))
+        copy_btn = ctk.CTkButton(
+            bar,
+            text="📋  Copier la reponse",
+            width=200, height=40,
+            font=(RESOLVED_BODY, 13, "bold"),
+            text_color="#FFFFFF",
+            fg_color=PALETTE["accent"],
+            hover_color=PALETTE["accent_hover"],
+            border_width=1, border_color=PALETTE["border_2"],
+            command=copy,
+        )
+        copy_btn.pack(side="right")
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.bind("<Control-c>", lambda _e: copy())
 
 
 class HistoryWindow(ctk.CTkToplevel):
@@ -1234,6 +1444,20 @@ class App(ctk.CTk):
         updater.add_listener(self._on_global_update_status)
         self.after(5000, lambda: updater.check_for_updates(async_=True))
 
+        # Welcome dialog on first launch (when no API key has been configured yet)
+        self.after(400, self._maybe_show_welcome)
+
+    def _maybe_show_welcome(self) -> None:
+        keys = self.settings.get("api_keys", {})
+        any_key = any((v or "").strip() for v in keys.values())
+        if any_key:
+            return  # already configured, skip the onboarding
+        WelcomeWindow(self, on_close=self._on_welcome_close)
+
+    def _on_welcome_close(self, open_settings: bool) -> None:
+        if open_settings:
+            self.after(200, self._open_settings)
+
     def _bind_shortcuts(self) -> None:
         self.bind("<Control-Return>", lambda _e: self._on_generate())
         self.bind("<Control-s>", lambda _e: self._save_current())
@@ -1341,6 +1565,18 @@ class App(ctk.CTk):
             hover_color=PALETTE["tag_bg"],
             command=self._open_library,
         ).pack(side="right", padx=6, pady=14)
+        ctk.CTkButton(
+            topbar,
+            text="?",
+            width=40, height=36,
+            font=(RESOLVED_BODY, 14, "bold"),
+            fg_color="transparent",
+            border_width=1,
+            border_color=PALETTE["muted"],
+            text_color=PALETTE["muted"],
+            hover_color=PALETTE["tag_bg"],
+            command=self._open_welcome,
+        ).pack(side="right", padx=(6, 6), pady=14)
 
         # Main split
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -1849,6 +2085,7 @@ class App(ctk.CTk):
                 text_color=PALETTE["muted_dim"],
             )
             empty.pack(anchor="w", padx=12, pady=18)
+            self._update_generate_state()
             return
         per_row = 2
         row_frames: list[ctk.CTkFrame] = []
@@ -1863,6 +2100,7 @@ class App(ctk.CTk):
                 on_remove=self._remove_mega,
                 on_preview=self._preview_mega,
             ).pack(side="left", padx=4, pady=2, fill="x", expand=True)
+        self._update_generate_state()
 
     def _apply_preset(self, preset: dict) -> None:
         self.selected_megas = [m for m in self.mega_prompts if m["id"] in preset["ids"]]
@@ -1993,7 +2231,13 @@ class App(ctk.CTk):
         self.send_btn.configure(state="normal", text="🚀  Envoyer a l'IA")
         self.generate_btn.configure(state="normal")
         self._set_status(f"Reponse recue de {provider_id}.", ok=True)
-        ResponseWindow(self, f"Reponse - {provider_id} / {model}", resp)
+        ResponseWindow(
+            self,
+            f"Reponse - {provider_id} / {model}",
+            resp,
+            provider_id=provider_id,
+            model=model,
+        )
 
     def _on_send_error(self, msg: str) -> None:
         self._stop_loading_indicator()
@@ -2082,6 +2326,11 @@ class App(ctk.CTk):
 
     def _open_about(self) -> None:
         AboutWindow(self)
+
+    def _open_welcome(self) -> None:
+        WelcomeWindow(self, on_close=lambda open_settings=False: (
+            self.after(200, self._open_settings) if open_settings else None
+        ))
 
     def _open_library(self) -> None:
         LibraryWindow(self, list(self.mega_prompts), on_change=self._on_library_change)
@@ -2189,9 +2438,54 @@ class App(ctk.CTk):
             self._show_input_placeholder()
         self._update_input_count()
 
+    def _update_generate_state(self) -> None:
+        """Reflect readiness in the Generate button: ready (vivid) vs not (dim)."""
+        if not hasattr(self, "generate_btn"):
+            return
+        has_input = (
+            not getattr(self, "_input_has_placeholder", True)
+            and bool(self.input_box.get("1.0", "end").strip())
+        )
+        has_megas = bool(self.selected_megas)
+        ready = has_input and has_megas
+
+        if ready:
+            self.generate_btn.configure(
+                fg_color=PALETTE["accent"],
+                hover_color=PALETTE["accent_hover"],
+                text="✨   Generer le Prompt Ultime    (Ctrl+Enter)",
+                state="normal",
+                text_color="#FFFFFF",
+            )
+        elif has_input and not has_megas:
+            self.generate_btn.configure(
+                fg_color=PALETTE["accent_dim"],
+                hover_color=PALETTE["accent"],
+                text="↑  Choisis au moins un Mega Prompt",
+                state="normal",
+                text_color=PALETTE["muted"],
+            )
+        elif not has_input and has_megas:
+            self.generate_btn.configure(
+                fg_color=PALETTE["accent_dim"],
+                hover_color=PALETTE["accent"],
+                text="↑  Ecris d'abord ton prompt de base",
+                state="normal",
+                text_color=PALETTE["muted"],
+            )
+        else:
+            self.generate_btn.configure(
+                fg_color=PALETTE["accent_dim"],
+                hover_color=PALETTE["accent"],
+                text="✨   Generer    (Ctrl+Enter)",
+                state="normal",
+                text_color=PALETTE["muted"],
+            )
+
     def _update_input_count(self) -> None:
         if getattr(self, "_input_has_placeholder", False):
             self.input_count.configure(text="0 car.", text_color=PALETTE["muted_dim"])
+            self._update_generate_state()
             return
         text = self.input_box.get("1.0", "end").rstrip("\n")
         n = len(text)
@@ -2200,6 +2494,7 @@ class App(ctk.CTk):
             text=f"{n} car. · {words} mots",
             text_color=PALETTE["muted"] if n > 0 else PALETTE["muted_dim"],
         )
+        self._update_generate_state()
 
     def _update_output_count(self) -> None:
         text = self.output_box.get("1.0", "end").rstrip("\n")

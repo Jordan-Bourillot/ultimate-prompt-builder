@@ -167,7 +167,7 @@ class IntegrationTests(unittest.TestCase):
         chosen = [items[0], items[6], items[13]]
         out = build_ultimate_prompt("Cree moi une app", chosen)
         self.assertIn("Cree moi une app", out)
-        self.assertIn("Autonomie build continu", out)
+        self.assertIn("Autonomie continue", out)
         self.assertIn("Anti-slop", out)
         self.assertIn("Mode produit/business", out)
 

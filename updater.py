@@ -29,7 +29,7 @@ from typing import Callable, Optional
 logger = logging.getLogger("updater")
 
 # --- A configurer ---
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 GITHUB_OWNER = "Jordan-Bourillot"
 GITHUB_REPO = "ultimate-prompt-builder"
 UPDATE_INSTALLER_PATTERN = "UltimatePromptBuilder_setup_*.exe"
