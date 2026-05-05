@@ -85,29 +85,29 @@ PRESETS = [
         "desc": "Autonomie + Anti-slop + Mode produit",
     },
     {
-        "name": "Decision strategique",
+        "name": "Décision stratégique",
         "ids": ["01", "04", "05", "10"],
-        "desc": "Honnetete + Steelman + Pre-mortem + Sparring",
+        "desc": "Honnêteté + Steelman + Pré-mortem + Sparring",
     },
     {
         "name": "Recherche & veille",
         "ids": ["02", "07", "15"],
-        "desc": "Anti-hallu + Densite + Compression",
+        "desc": "Anti-hallu + Densité + Compression",
     },
     {
         "name": "Apprentissage profond",
         "ids": ["03", "08", "09"],
-        "desc": "Premiers principes + Niveau calibre + Coach",
+        "desc": "Premiers principes + Niveau calibré + Coach",
     },
     {
         "name": "Diagnostic complexe",
         "ids": ["14", "02", "12"],
-        "desc": "Investigateur + Anti-hallu + Detection biais",
+        "desc": "Investigateur + Anti-hallu + Détection biais",
     },
     {
         "name": "Projet long",
         "ids": ["00", "11", "12"],
-        "desc": "Autonomie + Memoire + Detection biais",
+        "desc": "Autonomie + Mémoire + Détection biais",
     },
 ]
 
@@ -165,35 +165,110 @@ def _load_brand_fonts() -> tuple[str, str]:
         return RESOLVED_BODY, RESOLVED_BODY
 
 
+def _resolve_asset(*parts) -> "Path":
+    """Resolve an asset path that works both in dev and in PyInstaller bundle.
+
+    PyInstaller copies bundled datas (cf. `datas` dans alphabeast.spec) sous
+    `sys._MEIPASS`. En dev, on tombe sur le dossier source du projet.
+    """
+    from pathlib import Path
+    import sys
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return Path(base).joinpath(*parts)
+    return Path(__file__).parent.joinpath(*parts)
+
+
+def _apply_window_icon(window) -> None:
+    """Définit l'icône de la fenêtre (barre des tâches Windows + alt-tab).
+
+    Sans cet appel, Tk affiche son icône par défaut (le carré gris cassé).
+    Le `.spec` PyInstaller met déjà l'icône sur le `.exe` (visible dans
+    l'explorateur), mais ça n'affecte PAS la fenêtre runtime — il faut
+    `iconbitmap()` séparément.
+    """
+    try:
+        ico = _resolve_asset("assets", "icon.ico")
+        if ico.exists():
+            # `default=` propage aussi aux fenêtres enfants (Toplevel)
+            window.iconbitmap(default=str(ico))
+        else:
+            logger.warning("icon.ico introuvable : %s", ico)
+    except Exception as exc:
+        logger.warning("icon set failed: %s", exc)
+
+
+def _set_app_user_model_id(app_id: str = "triskell.alphabeast") -> None:
+    """Windows : groupe correctement les fenêtres dans la barre des tâches.
+
+    Sans ça, deux instances de l'app apparaissent séparément, ou l'icône
+    pinned ne lance pas la même AppUserModelID que l'instance qui démarre.
+    À appeler le plus tôt possible (avant la 1ère fenêtre).
+    """
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception as exc:
+        logger.debug("AppUserModelID set failed: %s", exc)
+
+
 def _apply_dark_titlebar(window) -> None:
-    """Force dark titlebar on Windows 10/11 via DWM. Tries both DWMA constants
-    (20 = Win 10 v1909+, 19 = Win 10 v1809-v1903). Re-applies once on map event
-    in case the first call lands before the HWND is real."""
+    """Force dark titlebar on Windows 10/11 via DWM.
+
+    BUGFIX 2026-05-05 : la version précédente faisait `withdraw()` +
+    `deiconify()` pour forcer un redraw, ET se bindait sur l'event `<Map>`.
+    Or `deiconify()` déclenche un nouveau `<Map>` → la boucle infinie qui
+    faisait clignoter la fenêtre et freezait le PC.
+
+    Pour les CTkToplevel (Settings, About, etc.), GetParent(winfo_id()) ne
+    retournait pas le bon HWND → le titlebar restait dans la couleur d'accent
+    par défaut (rose vif sur certaines builds Windows). On essaie maintenant
+    plusieurs HWND candidats (winfo_id direct, GetParent, wm_frame).
+    """
+    def collect_hwnds():
+        import ctypes
+        hwnds = []
+        try:
+            hwnds.append(ctypes.windll.user32.GetParent(window.winfo_id()))
+        except Exception:
+            pass
+        try:
+            hwnds.append(window.winfo_id())
+        except Exception:
+            pass
+        try:
+            frame = window.wm_frame()
+            if isinstance(frame, str):
+                hwnds.append(int(frame, 16))
+            elif isinstance(frame, int):
+                hwnds.append(frame)
+        except Exception:
+            pass
+        return [h for h in hwnds if h]
+
     def do_it():
         try:
             import ctypes
             window.update_idletasks()
-            hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
             value = ctypes.c_int(1)
-            for attr in (20, 19):
-                rc = ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                    hwnd, attr,
-                    ctypes.byref(value), ctypes.sizeof(value),
-                )
-                if rc == 0:
-                    break
-            # Force a redraw by toggling visibility briefly
-            try:
-                window.withdraw()
-                window.deiconify()
-            except Exception:
-                pass
+            for hwnd in collect_hwnds():
+                # Essaie les deux constantes DWMA (20 = Win10 v1909+, 19 = older).
+                for attr in (20, 19):
+                    try:
+                        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                            hwnd, attr,
+                            ctypes.byref(value), ctypes.sizeof(value),
+                        )
+                    except Exception:
+                        pass
         except Exception as exc:
             logger.debug("dark titlebar not applied: %s", exc)
+
+    # Plusieurs essais pour les Toplevel dont le HWND n'est pas immédiat.
+    # Pas de bind <Map> (déclenchait une boucle infinie).
     try:
-        # Apply twice: once short for normal case, once after map for slow cases
-        window.after(50, do_it)
-        window.bind("<Map>", lambda _e: do_it(), add="+")
+        window.after(80, do_it)
+        window.after(300, do_it)
     except Exception:
         do_it()
 
@@ -377,12 +452,12 @@ class WelcomeWindow(ctk.CTkToplevel):
         steps_frame.pack(fill="x", padx=32, pady=4)
 
         steps = [
-            ("1", "Ecris ton prompt",
-             "Une demande, un brief, une question - tout ce que tu veux envoyer a une IA."),
-            ("2", "Pioche un preset (ou des Mega Prompts)",
-             "Production de sites · Build d'app · Decision strategique · Recherche & veille…"),
-            ("3", "Genere et envoie",
-             "Le Prompt Ultime est genere, puis envoye a Claude / GPT / Gemini / Mistral / Grok."),
+            ("1", "Écris ton prompt",
+             "Une demande, un brief, une question — tout ce que tu veux envoyer à une IA."),
+            ("2", "Pioche un preset (ou des Méga Prompts)",
+             "Production de sites · Build d'app · Décision stratégique · Recherche & veille…"),
+            ("3", "Génère et envoie",
+             "Le Prompt Ultime est généré, puis envoyé à Claude / GPT / Gemini / Mistral / Grok."),
         ]
         for num, title, desc in steps:
             row = ctk.CTkFrame(
@@ -421,7 +496,7 @@ class WelcomeWindow(ctk.CTkToplevel):
         tip.pack(fill="x", padx=32, pady=(18, 4))
         ctk.CTkLabel(
             tip,
-            text="💡  Astuce : configure d'abord ta cle API dans Parametres pour pouvoir envoyer a l'IA. Sinon tu peux juste generer + copier le prompt et le coller ailleurs.",
+            text="💡  Astuce : configure d'abord ta clé API dans Paramètres pour pouvoir envoyer à l'IA. Sinon tu peux juste générer + copier le prompt et le coller ailleurs.",
             font=(RESOLVED_BODY, 11),
             text_color="#FFFFFF",
             wraplength=560, justify="left",
@@ -430,7 +505,7 @@ class WelcomeWindow(ctk.CTkToplevel):
         bar = ctk.CTkFrame(wrap, fg_color="transparent")
         bar.pack(side="bottom", fill="x", padx=32, pady=(20, 24))
         ctk.CTkButton(
-            bar, text="Ouvrir Parametres",
+            bar, text="Ouvrir Paramètres",
             width=170, height=42,
             font=(RESOLVED_BODY, 12, "bold"),
             text_color=PALETTE["text"],
@@ -524,7 +599,7 @@ class AboutWindow(ctk.CTkToplevel):
             wrap,
             text=(
                 "Combine ton prompt avec une bibliotheque de Mega Prompts\n"
-                "et envoie le resultat a Claude, GPT, Gemini, Mistral ou Grok."
+                "et envoie le résultat à Claude, GPT, Gemini, Mistral ou Grok."
             ),
             font=(RESOLVED_BODY, 11),
             text_color=PALETTE["tag_fg"],
@@ -615,10 +690,21 @@ class MegaPromptEditor(ctk.CTkToplevel):
                 anchor="w",
             ).pack(fill="x", pady=(10, 4))
 
+        # Style commun pour CTkEntry (palette Triskell — évite le gris CTk par défaut)
+        _entry_kw = dict(
+            fg_color=PALETTE["input_bg"],
+            border_color=PALETTE["border"],
+            border_width=1,
+            text_color=PALETTE["text"],
+            placeholder_text_color=PALETTE["muted_dim"],
+            corner_radius=8,
+        )
+
         field_label("Nom court")
         self.name_entry = ctk.CTkEntry(
             body, height=36, placeholder_text="Ex: Anti-distraction",
             font=(RESOLVED_BODY, 12),
+            **_entry_kw,
         )
         self.name_entry.pack(fill="x")
         if self.mp.get("name"):
@@ -629,6 +715,7 @@ class MegaPromptEditor(ctk.CTkToplevel):
             body, height=36,
             placeholder_text="Ex: Couper court aux digressions",
             font=(RESOLVED_BODY, 12),
+            **_entry_kw,
         )
         self.tagline_entry.pack(fill="x")
         if self.mp.get("tagline"):
@@ -750,6 +837,11 @@ class LibraryWindow(ctk.CTkToplevel):
             placeholder_text="Rechercher par nom, categorie, tagline ou contenu...",
             font=(RESOLVED_BODY, 12),
             fg_color=PALETTE["input_bg"],
+            border_color=PALETTE["border"],
+            border_width=1,
+            text_color=PALETTE["text"],
+            placeholder_text_color=PALETTE["muted_dim"],
+            corner_radius=8,
         )
         self.search_entry.pack(side="left", fill="x", expand=True, padx=(0, 18), pady=12)
         self.search_entry.bind("<KeyRelease>", lambda _e: self._on_search())
@@ -968,7 +1060,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
     def __init__(self, master, settings: dict[str, Any], on_save):
         super().__init__(master)
-        self.title("Parametres - Cles API & Modeles")
+        self.title("Paramètres — Clés API & Modèles")
         self.geometry("640x560")
         self.transient(master)
         self.grab_set()
@@ -978,12 +1070,21 @@ class SettingsWindow(ctk.CTkToplevel):
         self.on_save = on_save
         self._key_entries: dict[str, ctk.CTkEntry] = {}
 
-        wrapper = ctk.CTkScrollableFrame(self, corner_radius=0)
+        # DECISION: aligner le scrollable sur la palette Triskell pour éviter
+        # le gris CustomTkinter par défaut qui casse l'identité visuelle.
+        wrapper = ctk.CTkScrollableFrame(
+            self,
+            corner_radius=0,
+            fg_color=PALETTE["bg"],
+            scrollbar_fg_color=PALETTE["bg"],
+            scrollbar_button_color=PALETTE["tag_bg"],
+            scrollbar_button_hover_color=PALETTE["tag_bg_hover"],
+        )
         wrapper.pack(fill="both", expand=True, padx=20, pady=20)
 
         ctk.CTkLabel(
             wrapper,
-            text="Cles API",
+            text="Clés API",
             font=(RESOLVED_DISPLAY, 18, "bold"),
             text_color="#FFFFFF",
         ).pack(anchor="w", pady=(0, 10))
@@ -1017,7 +1118,13 @@ class SettingsWindow(ctk.CTkToplevel):
                 show="*",
                 placeholder_text=f"sk-... ({pid})",
                 width=360,
-                height=32,
+                height=34,
+                fg_color=PALETTE["input_bg"],
+                border_color=PALETTE["border"],
+                border_width=1,
+                text_color=PALETTE["text"],
+                placeholder_text_color=PALETTE["muted_dim"],
+                corner_radius=8,
             )
             current = self.settings.get("api_keys", {}).get(info["key_field"], "")
             if current:
@@ -1030,7 +1137,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # ----- Updates section -----
         ctk.CTkLabel(
-            wrapper, text="Mises a jour",
+            wrapper, text="Mises à jour",
             font=(RESOLVED_DISPLAY, 18, "bold"),
             text_color="#FFFFFF",
         ).pack(anchor="w", pady=(20, 8))
@@ -1044,7 +1151,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         self._upd_status_lbl = ctk.CTkLabel(
             upd_card,
-            text=f"Version installee : v{UPDATER_VERSION}",
+            text=f"Version installée : v{UPDATER_VERSION}",
             font=(RESOLVED_BODY, 12, "bold"),
             text_color="#FFFFFF",
             anchor="w",
@@ -1064,7 +1171,7 @@ class SettingsWindow(ctk.CTkToplevel):
         upd_actions = ctk.CTkFrame(upd_card, fg_color="transparent")
         upd_actions.pack(fill="x", padx=14, pady=(0, 12))
         self._upd_check_btn = ctk.CTkButton(
-            upd_actions, text="Verifier maintenant",
+            upd_actions, text="Vérifier maintenant",
             width=170, height=34,
             font=(RESOLVED_BODY, 11, "bold"),
             text_color="#FFFFFF",
@@ -1075,12 +1182,12 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self._upd_check_btn.pack(side="left")
         self._upd_install_btn = ctk.CTkButton(
-            upd_actions, text="Installer la mise a jour",
+            upd_actions, text="Installer la mise à jour",
             width=200, height=34,
             font=(RESOLVED_BODY, 11, "bold"),
             text_color="#FFFFFF",
-            fg_color=PALETTE["orange"],
-            hover_color="#EA580C",
+            fg_color=PALETTE["violet"],
+            hover_color="#7C3AED",
             border_width=1, border_color=PALETTE["border_2"],
             command=updater.install,
         )
@@ -1146,12 +1253,12 @@ class SettingsWindow(ctk.CTkToplevel):
         phase = st.phase
         nv = st.next_version or "?"
         if phase == "idle":
-            self._upd_status_lbl.configure(text=f"Version installee : v{st.current_version}")
+            self._upd_status_lbl.configure(text=f"Version installée : v{st.current_version}")
             self._upd_detail_lbl.configure(
                 text="Clique sur 'Verifier maintenant' pour chercher une nouvelle version.",
                 text_color=PALETTE["muted"],
             )
-            self._upd_check_btn.configure(state="normal", text="Verifier maintenant")
+            self._upd_check_btn.configure(state="normal", text="Vérifier maintenant")
             self._upd_install_btn.configure(state="disabled")
         elif phase == "checking":
             self._upd_detail_lbl.configure(
@@ -1161,10 +1268,10 @@ class SettingsWindow(ctk.CTkToplevel):
             self._upd_install_btn.configure(state="disabled")
         elif phase == "not-available":
             self._upd_detail_lbl.configure(
-                text=f"Tu es a jour. Derniere version : v{nv}.",
+                text=f"Tu es à jour. Dernière version : v{nv}.",
                 text_color=PALETTE["ok"],
             )
-            self._upd_check_btn.configure(state="normal", text="Verifier maintenant")
+            self._upd_check_btn.configure(state="normal", text="Vérifier maintenant")
             self._upd_install_btn.configure(state="disabled")
         elif phase == "available":
             self._upd_detail_lbl.configure(
@@ -1185,7 +1292,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 text=f"v{nv} pret a etre installe. Clique sur 'Installer' (l'app va redemarrer).",
                 text_color=PALETTE["orange"],
             )
-            self._upd_check_btn.configure(state="normal", text="Verifier maintenant")
+            self._upd_check_btn.configure(state="normal", text="Vérifier maintenant")
             self._upd_install_btn.configure(state="normal")
         elif phase == "error":
             self._upd_detail_lbl.configure(
@@ -1415,6 +1522,10 @@ class HistoryWindow(ctk.CTkToplevel):
 
 class App(ctk.CTk):
     def __init__(self) -> None:
+        # Identifie l'app dans Windows AVANT de créer la fenêtre,
+        # sinon la barre des tâches groupe mal et l'icône pinned est cassée.
+        _set_app_user_model_id("triskell.alphabeast")
+
         super().__init__()
         self.settings = config.load_settings()
         self.mega_prompts = config.load_mega_prompts()
@@ -1435,6 +1546,10 @@ class App(ctk.CTk):
         self.geometry(f"{APP_W}x{APP_H}")
         self.minsize(1080, 700)
         self.configure(fg_color=PALETTE["bg"])
+
+        # Icône de fenêtre (barre des tâches + alt-tab). Sans ça, Tk affiche
+        # son icône grise par défaut au lieu du logo Triskell.
+        _apply_window_icon(self)
 
         self._build_ui()
         self._bind_shortcuts()
@@ -1534,7 +1649,7 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             topbar,
-            text="⚙  Parametres",
+            text="⚙  Paramètres",
             width=130,
             fg_color="transparent",
             border_width=1,
@@ -1556,7 +1671,7 @@ class App(ctk.CTk):
         ).pack(side="right", padx=6, pady=14)
         ctk.CTkButton(
             topbar,
-            text="📚  Bibliotheque",
+            text="📚  Bibliothèque",
             width=140,
             fg_color="transparent",
             border_width=1,
@@ -1606,7 +1721,7 @@ class App(ctk.CTk):
         ).grid(row=0, column=0, sticky="w", padx=(0, 8))
         ctk.CTkLabel(
             input_header,
-            text="Ecris ton prompt de base",
+            text="Écris ton prompt de base",
             font=(RESOLVED_BODY, 14, "bold"),
             text_color="#FFFFFF",
             anchor="w",
@@ -1617,7 +1732,18 @@ class App(ctk.CTk):
             font=(RESOLVED_BODY, 10),
             text_color=PALETTE["muted_dim"],
         )
-        self.input_count.grid(row=0, column=2, sticky="e")
+        self.input_count.grid(row=0, column=2, sticky="e", padx=(0, 8))
+        # Bouton "Effacer" — vide le textarea en 1 clic
+        ctk.CTkButton(
+            input_header, text="✕  Effacer",
+            width=80, height=24,
+            font=(RESOLVED_BODY, 10, "bold"),
+            text_color=PALETTE["muted"],
+            fg_color="transparent",
+            hover_color=PALETTE["tag_bg_hover"],
+            border_width=1, border_color=PALETTE["border"],
+            command=self._clear_input,
+        ).grid(row=0, column=3, sticky="e")
 
         self.input_box = ctk.CTkTextbox(
             left,
@@ -1628,13 +1754,14 @@ class App(ctk.CTk):
             text_color=PALETTE["text"],
             border_width=1,
             border_color=PALETTE["border"],
+            height=220,  # hauteur min utile (sinon écrasé à 3 lignes par les autres rows)
         )
         self.input_box.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 8))
         self.input_box.bind("<KeyRelease>", lambda _e: self._update_input_count())
         # Subtle placeholder behavior
         self._input_placeholder = (
             "Ex: Code-moi une appli desktop qui... / Critique honnetement mon plan de... / "
-            "Resume ce document...\n\n(Ctrl+Enter pour generer)"
+            "Résume ce document...\n\n(Ctrl+Enter pour générer)"
         )
         self._show_input_placeholder()
         self.input_box.bind("<FocusIn>", self._on_input_focus_in)
@@ -1660,7 +1787,7 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             left,
-            text="Option A — un preset (combos recommandes) :",
+            text="Option A — un preset (combos recommandés) :",
             font=(RESOLVED_BODY, 11),
             text_color=PALETTE["muted"],
         ).grid(row=3, column=0, sticky="w", padx=(46, 14), pady=(2, 4))
@@ -1678,21 +1805,15 @@ class App(ctk.CTk):
                 rf = ctk.CTkFrame(presets_row, fg_color="transparent")
                 rf.pack(fill="x", padx=4, pady=2)
                 preset_rows.append(rf)
-            # Triskell house preset (Production de sites) stays solid orange
-            # to remain the visual hero. All others use a subtle outlined style.
-            is_triskell = preset["name"] == "Production de sites"
-            if is_triskell:
-                fg = PALETTE["orange"]
-                hover = "#EA580C"
-                border_color = PALETTE["orange"]
-                text_color = "#FFFFFF"
-                label = "◆  " + preset["name"]
-            else:
-                fg = "transparent"
-                hover = PALETTE["tag_bg_hover"]
-                border_color = PALETTE["border_2"]
-                text_color = PALETTE["text"]
-                label = preset["name"]
+            # Tous les presets ont le même style outline pour ne pas créer de
+            # hiérarchie visuelle confuse. Avant : "Production de sites" était
+            # mis en avant comme "preset maison Triskell" (orange puis violet),
+            # ce qui n'était pas compris par les utilisateurs.
+            fg = "transparent"
+            hover = PALETTE["tag_bg_hover"]
+            border_color = PALETTE["border_2"]
+            text_color = PALETTE["text"]
+            label = preset["name"]
             btn = ctk.CTkButton(
                 preset_rows[-1],
                 text=label,
@@ -1807,7 +1928,7 @@ class App(ctk.CTk):
         ).pack(side="left", padx=(0, 8))
         ctk.CTkLabel(
             step3_header,
-            text="Genere ton Prompt Ultime",
+            text="Génère ton Prompt Ultime",
             font=(RESOLVED_BODY, 14, "bold"),
             text_color="#FFFFFF",
         ).pack(side="left")
@@ -1818,7 +1939,7 @@ class App(ctk.CTk):
 
         self.generate_btn = ctk.CTkButton(
             actions,
-            text="✨   Generer    (Ctrl+Enter)",
+            text="✨   Générer    (Ctrl+Enter)",
             height=44,
             font=(RESOLVED_DISPLAY, 14, "bold"),
             text_color="#FFFFFF",
@@ -1850,7 +1971,7 @@ class App(ctk.CTk):
             fg_color=PALETTE["violet"], corner_radius=10,
         ).grid(row=0, column=0, sticky="w", padx=(0, 8))
         ctk.CTkLabel(
-            header_row, text="Copie / Sauvegarde / Envoie a l'IA",
+            header_row, text="Prompt Ultime",
             font=(RESOLVED_BODY, 14, "bold"),
             text_color="#FFFFFF",
         ).grid(row=0, column=1, sticky="w")
@@ -1863,11 +1984,22 @@ class App(ctk.CTk):
         self.output_count.grid(row=0, column=2, sticky="e", padx=(0, 10))
         self.status_label = ctk.CTkLabel(
             header_row,
-            text="●  Pret",
+            text="●  Prêt",
             font=(RESOLVED_BODY, 11, "bold"),
             text_color=PALETTE["ok"],
         )
         self.status_label.grid(row=0, column=3, sticky="e", padx=(0, 8))
+        # Bouton "Effacer" la sortie
+        ctk.CTkButton(
+            header_row, text="✕  Effacer",
+            width=80, height=24,
+            font=(RESOLVED_BODY, 10, "bold"),
+            text_color=PALETTE["muted"],
+            fg_color="transparent",
+            hover_color=PALETTE["tag_bg_hover"],
+            border_width=1, border_color=PALETTE["border"],
+            command=self._clear_output,
+        ).grid(row=0, column=4, sticky="e", padx=(0, 6))
         ctk.CTkButton(
             header_row,
             text="⤓",
@@ -1881,7 +2013,7 @@ class App(ctk.CTk):
             command=self._export_to_file,
             border_width=1,
             border_color=PALETTE["border_2"],
-        ).grid(row=0, column=4, sticky="e")
+        ).grid(row=0, column=5, sticky="e")
 
         self.output_box = ctk.CTkTextbox(
             right,
@@ -2029,7 +2161,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(
             footer,
             text=(
-                "Ctrl+Enter Generer  ·  Ctrl+S Sauvegarder  ·  Ctrl+E Exporter"
+                "Ctrl+Enter Générer  ·  Ctrl+S Sauvegarder  ·  Ctrl+E Exporter"
                 "  ·  Ctrl+L Tout retirer  ·  F1 A propos"
             ),
             font=(RESOLVED_BODY, 9),
@@ -2066,6 +2198,31 @@ class App(ctk.CTk):
         self.selected_megas = []
         self._refresh_tags()
 
+    def _clear_input(self) -> None:
+        """Vide le textarea du prompt de base. Bouton ✕ Effacer du panneau 1."""
+        try:
+            self.input_box.delete("1.0", "end")
+            self._update_input_count()
+            self._show_input_placeholder()
+            self._set_status("Prompt effacé.")
+        except Exception as exc:
+            logger.warning("clear input failed: %s", exc)
+
+    def _clear_output(self) -> None:
+        """Vide le textarea du prompt ultime généré. Bouton ✕ Effacer du panneau 4."""
+        try:
+            self.output_box.configure(state="normal")
+            self.output_box.delete("1.0", "end")
+            self.output_box.configure(state="disabled")
+            self.current_ultimate = ""
+            try:
+                self.output_count.configure(text="")
+            except Exception:
+                pass
+            self._set_status("Sortie effacée.")
+        except Exception as exc:
+            logger.warning("clear output failed: %s", exc)
+
     def _refresh_tags(self) -> None:
         for w in self.tags_frame.winfo_children():
             w.destroy()
@@ -2078,7 +2235,7 @@ class App(ctk.CTk):
             empty = ctk.CTkLabel(
                 self.tags_frame,
                 text=(
-                    "Aucun Mega Prompt actif.  Pioche un preset ci-dessus, "
+                    "Aucun Méga-prompt actif. Pioche un preset ci-dessus, "
                     "ou ajoute-en individuellement."
                 ),
                 font=(RESOLVED_BODY, 11),
@@ -2164,11 +2321,11 @@ class App(ctk.CTk):
 
     def _save_current(self) -> None:
         if getattr(self, "_output_empty", False):
-            self._set_status("Genere un prompt avant de sauvegarder.", warn=True)
+            self._set_status("Génère un prompt avant de sauvegarder.", warn=True)
             return
         text = self.output_box.get("1.0", "end").strip()
         if not text:
-            self._set_status("Genere un prompt avant de sauvegarder.", warn=True)
+            self._set_status("Génère un prompt avant de sauvegarder.", warn=True)
             return
         items = config.load_saved_prompts()
         if getattr(self, "_input_has_placeholder", False):
@@ -2195,11 +2352,11 @@ class App(ctk.CTk):
 
     def _on_send(self) -> None:
         if getattr(self, "_output_empty", False):
-            self._set_status("Genere d'abord un prompt ultime.", warn=True)
+            self._set_status("Génère d'abord un prompt ultime.", warn=True)
             return
         text = self.output_box.get("1.0", "end").strip()
         if not text:
-            self._set_status("Genere d'abord un prompt ultime.", warn=True)
+            self._set_status("Génère d'abord un prompt ultime.", warn=True)
             return
         provider_id = self._provider_label_to_id.get(
             self.provider_var.get(), "anthropic"
@@ -2309,17 +2466,17 @@ class App(ctk.CTk):
             return
         if st.phase == "ready":
             self._set_status(
-                f"Mise a jour v{st.next_version} prete - voir Parametres pour installer",
+                f"Mise à jour v{st.next_version} prête — voir Paramètres pour installer",
                 ok=True,
             )
         elif st.phase == "available":
             self._set_status(
-                f"Mise a jour v{st.next_version} disponible - telechargement en cours",
+                f"Mise à jour v{st.next_version} disponible - telechargement en cours",
             )
 
     def _on_settings_saved(self, settings: dict) -> None:
         self.settings = settings
-        self._set_status("Parametres enregistres.")
+        self._set_status("Paramètres enregistrés.")
 
     def _open_history(self) -> None:
         HistoryWindow(self, on_load=self._load_from_history)
@@ -2362,11 +2519,11 @@ class App(ctk.CTk):
 
     def _export_to_file(self) -> None:
         if getattr(self, "_output_empty", False):
-            self._set_status("Genere d'abord un prompt avant d'exporter.", warn=True)
+            self._set_status("Génère d'abord un prompt avant d'exporter.", warn=True)
             return
         text = self.output_box.get("1.0", "end").strip()
         if not text:
-            self._set_status("Rien a exporter.", warn=True)
+            self._set_status("Rien à exporter.", warn=True)
             return
         path = filedialog.asksaveasfilename(
             title="Exporter le Prompt Ultime",
@@ -2477,7 +2634,7 @@ class App(ctk.CTk):
             self.generate_btn.configure(
                 fg_color=PALETTE["accent_dim"],
                 hover_color=PALETTE["accent"],
-                text="✨   Generer    (Ctrl+Enter)",
+                text="✨   Générer    (Ctrl+Enter)",
                 state="normal",
                 text_color=PALETTE["muted"],
             )

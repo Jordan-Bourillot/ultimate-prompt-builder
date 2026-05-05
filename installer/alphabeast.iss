@@ -1,12 +1,12 @@
 ; ============================================================
 ;  AlphaBeast - installeur Windows (Inno Setup)
 ;  Compilation : double-cliquer sur build_installer.bat
-;  Sortie : installer_output\UltimatePromptBuilder_setup_X.Y.Z.exe
+;  Sortie : installer_output\AlphaBeast_setup_X.Y.Z.exe
 ; ============================================================
 
 #define MyAppName "AlphaBeast"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.0"
+  #define MyAppVersion "1.4.0"
 #endif
 #define MyAppPublisher "Triskell Studio"
 #define MyAppURL "https://prompt-builder.triskell-studio.fr"
@@ -25,7 +25,7 @@ DefaultDirName={autopf}\AlphaBeast
 DefaultGroupName=AlphaBeast
 DisableProgramGroupPage=yes
 OutputDir=..\installer_output
-OutputBaseFilename=UltimatePromptBuilder_setup_{#MyAppVersion}
+OutputBaseFilename=AlphaBeast_setup_{#MyAppVersion}
 SetupIconFile=..\assets\icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes

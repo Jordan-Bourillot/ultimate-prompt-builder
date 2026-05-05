@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4.0 — 2026-05-05
+- **Auto-updater Pattern A** : lit `prompt-builder.triskell-studio.fr/version.json` (manifest landing standard Triskell), fallback GitHub Releases pour la rétro-compat
+- **Bugfix icône taskbar/alt-tab** : AppUserModelID `triskell.alphabeast` + `_apply_window_icon` propagé aux Toplevel — fini l'icône grise Tk par défaut
+- **Boutons "Effacer"** sur l'input et la sortie générée
+- **Palette unifiée** : champs et scrollables alignés Triskell (plus de gris CTk par défaut), hover violet (#7C3AED) au lieu de orange
+- **Hiérarchie des presets retirée** : tous en outline uniforme (le preset "maison" surligné créait de la confusion)
+- **Accents fixés** dans les libellés ("Version installée", "Dernière version", "Tu es à jour")
+- **Installeur renommé** : `AlphaBeast_setup_X.Y.Z.exe` (le binaire interne reste `UltimatePromptBuilder.exe` pour préserver l'auto-update). Les v1.3.x devront mettre à jour manuellement la 1ère fois.
+
 ## v1.3.0 — 2026-05-04
 - **Onboarding** : Welcome dialog au 1er lancement (3 étapes guidées + raccourci Paramètres)
 - **Bouton "?"** dans le topbar pour rouvrir le guide à tout moment

@@ -60,12 +60,12 @@ echo.
 echo ============================================================
 echo  TERMINE
 echo ============================================================
-echo  Installeur : installer_output\UltimatePromptBuilder_setup_!VER!.exe
+echo  Installeur : installer_output\AlphaBeast_setup_!VER!.exe
 echo.
 echo  Etape suivante :
 echo   1. Cree une release sur https://github.com/Jordan-Bourillot/ultimate-prompt-builder/releases/new
 echo   2. Tag : v!VER!
-echo   3. Upload UltimatePromptBuilder_setup_!VER!.exe comme asset
+echo   3. Upload AlphaBeast_setup_!VER!.exe comme asset
 echo   4. Publish release
 echo ============================================================
 pause
