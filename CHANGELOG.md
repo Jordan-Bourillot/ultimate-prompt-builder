@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.3 — 2026-05-06
+### Logo polish
+- **Source = brand asset officiel landing** (`landing/public/img/icon.png` — chat bubble violet rempli, sparkles, version polie utilisée sur prompt-builder.triskell-studio.fr) au lieu de la version recolorée outline. Le brand est cohérent partout : landing + app desktop + taskbar Windows.
+- **Fond rounded-square sombre stripé → transparence** (THRESHOLD=80, plus généreux que la version legacy à 40 — le fond navy du brand asset a un léger gradient qui survivait sinon). L'icône s'intègre désormais nativement à n'importe quel fond UI.
+- **Crop serré sur le pictogramme** (suppression de la marge de sécurité `side // 24`) → +20% de surface visible quand l'icône est downsamplée à 24-32 px (taskbar Windows, alt-tab).
+
+### Dev mode
+- **Fallback `iconphoto` (PIL PhotoImage)** dans `_apply_window_icon` en plus de `iconbitmap` : override l'icône `python.exe` qui apparaissait à la place du chat-bubble en mode dev. Reference gardée en attribut `_icon_photo_ref` pour empêcher le GC qui faisait disparaître l'icône silencieusement après quelques secondes.
+
 ## v1.5.2 — 2026-05-06
 ### UX & branding
 - **Logo en miroir horizontal** (queue à droite, sparkles à gauche) — meilleur alignement visuel avec le wordmark "triskell STUDIO" placé à droite. Recoloration violet préservée.

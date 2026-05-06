@@ -247,20 +247,37 @@ def _resolve_asset(*parts) -> "Path":
 def _apply_window_icon(window) -> None:
     """Définit l'icône de la fenêtre (barre des tâches Windows + alt-tab).
 
-    Sans cet appel, Tk affiche son icône par défaut (le carré gris cassé).
-    Le `.spec` PyInstaller met déjà l'icône sur le `.exe` (visible dans
-    l'explorateur), mais ça n'affecte PAS la fenêtre runtime — il faut
-    `iconbitmap()` séparément.
+    Sans cet appel, Tk affiche son icône par défaut (le carré gris cassé)
+    OU, en dev (`python app.py`), l'icône de `python.exe` (carré bleu).
+
+    Double approche :
+    1. `iconbitmap(default=...)` → barre de titre + alt-tab (Toplevel inclus)
+    2. `iconphoto(True, PhotoImage(...))` → taskbar Windows (mode dev surtout).
+       En .exe PyInstaller la ressource embedded suffit, mais en dev
+       Windows colle au launcher python.exe sans iconphoto.
     """
     try:
         ico = _resolve_asset("assets", "icon.ico")
         if ico.exists():
-            # `default=` propage aussi aux fenêtres enfants (Toplevel)
             window.iconbitmap(default=str(ico))
         else:
             logger.warning("icon.ico introuvable : %s", ico)
     except Exception as exc:
-        logger.warning("icon set failed: %s", exc)
+        logger.warning("iconbitmap set failed: %s", exc)
+
+    # iconphoto fallback — utilise icon.png (256x256) pour overrider
+    # l'icône python.exe en dev mode + propage à toutes les fenêtres enfants.
+    try:
+        from PIL import Image, ImageTk
+        png = _resolve_asset("assets", "icon.png")
+        if png.exists():
+            img = Image.open(str(png))
+            # Reference gardée en attribut pour empêcher le GC qui fait
+            # disparaître l'icône silencieusement après quelques secondes.
+            window._icon_photo_ref = ImageTk.PhotoImage(img)
+            window.iconphoto(True, window._icon_photo_ref)
+    except Exception as exc:
+        logger.debug("iconphoto set failed: %s", exc)
 
 
 def _set_app_user_model_id(app_id: str = "triskell.alphabeast") -> None:
@@ -332,65 +349,62 @@ def _apply_dark_titlebar(window, dark: bool = True) -> None:
 
 
 def _load_app_logo(size: int):
-    """Load the recolored chat-bubble logo at the requested size.
+    """Load the brand chat-bubble icon at the requested size.
 
+    Source : `landing/public/img/icon.png` — c'est le brand asset officiel
+    (chat bubble violet rempli, sparkles, fond rounded square sombre) utilisé
+    sur la landing prompt-builder.triskell-studio.fr. Fallback sur
+    `assets/logo.png` si la source landing n'est pas dispo (cas .exe bundle
+    où on ne ship pas le dossier landing/).
+
+    Pipeline :
     1. Charge la PNG RGBA.
-    2. Flip horizontal (miroir) — demande explicite v1.5.2 : la bulle pointe
-       désormais à droite, sparkles à gauche.
-    3. Strip du fond noir → transparence.
-    4. RECOLORATION VIOLET MONOCHROME : chaque pixel visible est remappé sur
-       un dégradé sombre→clair de violet selon sa luminance d'origine.
-       Les blancs deviennent du violet clair, les violets restent violets,
-       les zones sombres deviennent du violet profond.
-    5. Bbox + pad carré centré pour éviter toute distorsion au resize.
-    6. Resize Lanczos.
+    2. Flip horizontal (miroir) — la bulle pointe à droite, sparkles à gauche.
+    3. Bbox + pad carré centré pour éviter toute distorsion au resize.
+    4. Resize Lanczos.
+
+    PAS de recoloration : l'asset est déjà à la bonne nuance violette brand.
+    Strip du fond rounded-square sombre vers transparence (THRESHOLD=80
+    suffit pour cet asset car la bulle brand est claire et bien contrastée).
+    Crop serré sur le pictogramme (pas de marge de sécurité) pour maximiser
+    la taille visible quand l'icône est downsamplée à 24-32px (taskbar).
     """
     from pathlib import Path
     from PIL import Image
 
-    logo_path = Path(__file__).parent / "assets" / "logo.png"
-    if logo_path.exists():
+    # Sources candidates par ordre de préférence
+    here = Path(__file__).parent
+    candidates = [
+        here / "landing" / "public" / "img" / "icon.png",  # brand officiel
+        here / "assets" / "icon_brand.png",                 # copie locale (PyInstaller)
+        here / "assets" / "logo.png",                       # legacy fallback
+    ]
+    logo_path = next((p for p in candidates if p.exists()), None)
+
+    if logo_path is not None:
         try:
             img = Image.open(logo_path).convert("RGBA")
 
-            # Flip horizontal AVANT toutes les autres transformations.
+            # Flip horizontal — bulle pointe à droite, sparkles à gauche.
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
 
+            # Strip du fond sombre rounded-square → transparent. Threshold
+            # plus généreux (80) que la version legacy (40) car le fond du
+            # brand asset est navy uni avec léger gradient — sans seuil
+            # plus haut, des pixels du gradient survivent et créent un halo.
             px = img.load()
             w, h = img.size
-
-            # Dégradé de violet utilisé pour la recoloration monochrome.
-            # Stops sombre / mid / clair (cohérents avec la palette brand).
-            DARK = (0x43, 0x38, 0xCA)   # indigo-700
-            MID  = (0x63, 0x66, 0xF1)   # indigo-500 (= PALETTE.accent)
-            LITE = (0xA5, 0xB4, 0xFC)   # indigo-300, pastel apaisé
-
-            def lerp(a, b, t):
-                return (
-                    int(a[0] + (b[0] - a[0]) * t),
-                    int(a[1] + (b[1] - a[1]) * t),
-                    int(a[2] + (b[2] - a[2]) * t),
-                )
-
-            THRESHOLD = 40
+            THRESHOLD = 80
             for y in range(h):
                 for x in range(w):
                     r, g, b, a = px[x, y]
                     if a == 0:
                         continue
-                    # Pixel sombre = fond → transparent
                     if r <= THRESHOLD and g <= THRESHOLD and b <= THRESHOLD:
                         px[x, y] = (r, g, b, 0)
-                        continue
-                    # Recoloration violet : luminance pondérée → courbe
-                    lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
-                    if lum < 0.5:
-                        nr, ng, nb = lerp(DARK, MID, lum * 2.0)
-                    else:
-                        nr, ng, nb = lerp(MID, LITE, (lum - 0.5) * 2.0)
-                    px[x, y] = (nr, ng, nb, a)
 
-            # Bbox + pad carré centré (sinon resize étire l'image)
+            # Bbox sur le pictogramme uniquement (le fond est maintenant
+            # transparent), crop carré centré sans marge de sécurité.
             bbox = img.getbbox()
             if not bbox:
                 return img.resize((size, size), Image.LANCZOS)
@@ -408,7 +422,7 @@ def _load_app_logo(size: int):
                 sx0 = max(0, sx1 - side)
             if sy1 - sy0 != side:
                 sy0 = max(0, sy1 - side)
-            margin = side // 24
+            margin = 0  # crop serré, pas de marge
             sx0 = max(0, sx0 - margin)
             sy0 = max(0, sy0 - margin)
             sx1 = min(w, sx1 + margin)
