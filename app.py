@@ -335,13 +335,15 @@ def _load_app_logo(size: int):
     """Load the recolored chat-bubble logo at the requested size.
 
     1. Charge la PNG RGBA.
-    2. Strip du fond noir → transparence.
-    3. RECOLORATION VIOLET MONOCHROME : chaque pixel visible est remappé sur
+    2. Flip horizontal (miroir) — demande explicite v1.5.2 : la bulle pointe
+       désormais à droite, sparkles à gauche.
+    3. Strip du fond noir → transparence.
+    4. RECOLORATION VIOLET MONOCHROME : chaque pixel visible est remappé sur
        un dégradé sombre→clair de violet selon sa luminance d'origine.
        Les blancs deviennent du violet clair, les violets restent violets,
        les zones sombres deviennent du violet profond.
-    4. Bbox + pad carré centré pour éviter toute distorsion au resize.
-    5. Resize Lanczos.
+    5. Bbox + pad carré centré pour éviter toute distorsion au resize.
+    6. Resize Lanczos.
     """
     from pathlib import Path
     from PIL import Image
@@ -350,14 +352,15 @@ def _load_app_logo(size: int):
     if logo_path.exists():
         try:
             img = Image.open(logo_path).convert("RGBA")
+
+            # Flip horizontal AVANT toutes les autres transformations.
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+
             px = img.load()
             w, h = img.size
 
             # Dégradé de violet utilisé pour la recoloration monochrome.
             # Stops sombre / mid / clair (cohérents avec la palette brand).
-            # Famille indigo douce — moins agressive que le violet pur,
-            # plus harmonieuse avec le reste de l'UI (qui utilise déjà indigo
-            # comme accent principal).
             DARK = (0x43, 0x38, 0xCA)   # indigo-700
             MID  = (0x63, 0x66, 0xF1)   # indigo-500 (= PALETTE.accent)
             LITE = (0xA5, 0xB4, 0xFC)   # indigo-300, pastel apaisé
@@ -375,11 +378,11 @@ def _load_app_logo(size: int):
                     r, g, b, a = px[x, y]
                     if a == 0:
                         continue
-                    # 2) Pixel sombre = fond → transparent
+                    # Pixel sombre = fond → transparent
                     if r <= THRESHOLD and g <= THRESHOLD and b <= THRESHOLD:
                         px[x, y] = (r, g, b, 0)
                         continue
-                    # 3) Recoloration violet : luminance pondérée → courbe
+                    # Recoloration violet : luminance pondérée → courbe
                     lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
                     if lum < 0.5:
                         nr, ng, nb = lerp(DARK, MID, lum * 2.0)
@@ -387,7 +390,7 @@ def _load_app_logo(size: int):
                         nr, ng, nb = lerp(MID, LITE, (lum - 0.5) * 2.0)
                     px[x, y] = (nr, ng, nb, a)
 
-            # 4) Bbox + pad carré centré (sinon resize étire l'image)
+            # Bbox + pad carré centré (sinon resize étire l'image)
             bbox = img.getbbox()
             if not bbox:
                 return img.resize((size, size), Image.LANCZOS)
@@ -411,10 +414,10 @@ def _load_app_logo(size: int):
             sx1 = min(w, sx1 + margin)
             sy1 = min(h, sy1 + margin)
             img = img.crop((sx0, sy0, sx1, sy1))
-            # 5) Resize final
+            # Resize final
             return img.resize((size, size), Image.LANCZOS)
         except Exception as exc:
-            logger.debug("logo violet recolor failed: %s", exc)
+            logger.debug("logo load failed: %s", exc)
     return _make_triskell_logo(size)
 
 
@@ -1188,7 +1191,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master, settings: dict[str, Any], on_save):
         super().__init__(master)
         self.title("Paramètres — Clés API & Modèles")
-        self.geometry("640x560")
+        self.geometry("720x800")
         self.transient(master)
         self.grab_set()
         self.configure(fg_color=PALETTE["bg"])
@@ -1244,7 +1247,7 @@ class SettingsWindow(ctk.CTkToplevel):
                 row,
                 show="*",
                 placeholder_text=f"sk-... ({pid})",
-                width=360,
+                width=300,
                 height=34,
                 fg_color=PALETTE["input_bg"],
                 border_color=PALETTE["border"],
@@ -1258,6 +1261,24 @@ class SettingsWindow(ctk.CTkToplevel):
                 entry.insert(0, current)
             entry.pack(side="left", padx=(8, 0))
             self._key_entries[info["key_field"]] = entry
+
+            # Lien "Obtenir une clé" — ouvre la console du provider dans le navigateur.
+            # Permet à l'utilisateur d'aller créer une clé en 1 clic au lieu de
+            # chercher l'URL à la main.
+            console_url = info.get("console_url")
+            if console_url:
+                ctk.CTkButton(
+                    row,
+                    text="↗  Obtenir",
+                    width=80, height=34,
+                    corner_radius=8,
+                    font=(RESOLVED_BODY, 10, "bold"),
+                    fg_color="transparent",
+                    text_color=PALETTE["accent"],
+                    hover_color=PALETTE["accent_dim"],
+                    border_width=1, border_color=PALETTE["accent"],
+                    command=lambda url=console_url: webbrowser.open(url),
+                ).pack(side="left", padx=(6, 0))
 
         # Le toggle de thème vit dans la top-bar (☀/🌙). On reflète juste le
         # mode courant ici pour ne pas l'écraser quand l'utilisateur sauvegarde
@@ -2539,50 +2560,33 @@ class App(ctk.CTk):
         self.send_btn.grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
         # Step 3 sticky bar (row 3 + 4) — pinned above the footer.
+        # Refonte v1.5.2 : suppression du badge "3" + sous-titre redondant. La barre
+        # devient une zone CTA pure : un seul bouton hero qui occupe toute la largeur,
+        # text dynamique (mute par _update_generate_state quand pas prêt). Plus impactant
+        # qu'un petit bouton serré contre 3 labels qui se concurrencent.
         step3_bar_border = ctk.CTkFrame(
             self, height=1, corner_radius=0, fg_color=PALETTE["border"]
         )
         step3_bar_border.grid(row=3, column=0, sticky="ew")
         step3_bar = ctk.CTkFrame(
-            self, height=72, corner_radius=0, fg_color=PALETTE["panel_alt"]
+            self, height=84, corner_radius=0, fg_color=PALETTE["panel_alt"]
         )
         step3_bar.grid(row=4, column=0, sticky="ew")
         step3_bar.grid_propagate(False)
 
-        step3_inner = ctk.CTkFrame(step3_bar, fg_color="transparent")
-        step3_inner.pack(fill="both", expand=True, padx=14, pady=10)
-        ctk.CTkLabel(
-            step3_inner, text=" 3 ",
-            font=(RESOLVED_BODY, 11, "bold"),
-            text_color=PALETTE["text_strong"],
-            fg_color=PALETTE["orange"], corner_radius=10,
-        ).pack(side="left", padx=(0, 8))
-        ctk.CTkLabel(
-            step3_inner,
-            text="Génère ton Prompt Ultime",
-            font=(RESOLVED_BODY, 14, "bold"),
-            text_color=PALETTE["text_strong"],
-        ).pack(side="left")
-        ctk.CTkLabel(
-            step3_inner,
-            text="  (assemble brouillon + méga-prompts en un prompt prêt à l'emploi)",
-            font=(RESOLVED_BODY, 11),
-            text_color=PALETTE["muted"],
-        ).pack(side="left")
         self.generate_btn = ctk.CTkButton(
-            step3_inner,
+            step3_bar,
             text="✨   Générer    (Ctrl+Enter)",
-            height=48,
-            width=360,
+            height=56,
             corner_radius=14,
-            font=(RESOLVED_DISPLAY, 14, "bold"),
+            font=(RESOLVED_DISPLAY, 16, "bold"),
             text_color=PALETTE["text_strong"],
             fg_color=PALETTE["accent_dim"],
             hover_color=PALETTE["accent"],
             command=self._on_generate,
             border_width=0,
         )
-        self.generate_btn.pack(side="right")
+        self.generate_btn.pack(fill="both", expand=True, padx=24, pady=14)
 
         # Footer brand line with mini logo + wordmark + clickable URL (rows 5 + 6)
         footer_border = ctk.CTkFrame(self, height=1, fg_color=PALETTE["border"], corner_radius=0)

@@ -156,6 +156,7 @@ PROVIDERS: dict[str, dict] = {
         "label": "Anthropic (Claude)",
         "key_field": "anthropic",
         "caller": call_anthropic,
+        "console_url": "https://console.anthropic.com/settings/keys",
         "models": [
             "claude-opus-4-5",
             "claude-sonnet-4-5",
@@ -168,12 +169,14 @@ PROVIDERS: dict[str, dict] = {
         "label": "OpenAI (GPT)",
         "key_field": "openai",
         "caller": call_openai,
+        "console_url": "https://platform.openai.com/api-keys",
         "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
     },
     "google": {
         "label": "Google (Gemini)",
         "key_field": "google",
         "caller": call_google,
+        "console_url": "https://aistudio.google.com/app/apikey",
         "models": [
             "gemini-2.5-flash",
             "gemini-2.5-pro",
@@ -188,12 +191,14 @@ PROVIDERS: dict[str, dict] = {
         "label": "Mistral",
         "key_field": "mistral",
         "caller": call_mistral,
+        "console_url": "https://console.mistral.ai/api-keys/",
         "models": ["mistral-large-latest", "mistral-small-latest", "open-mistral-nemo"],
     },
     "xai": {
         "label": "xAI (Grok)",
         "key_field": "xai",
         "caller": call_xai,
+        "console_url": "https://console.x.ai/",
         "models": ["grok-2-latest", "grok-beta"],
     },
 }

@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.5.2 — 2026-05-06
+### UX & branding
+- **Logo en miroir horizontal** (queue à droite, sparkles à gauche) — meilleur alignement visuel avec le wordmark "triskell STUDIO" placé à droite. Recoloration violet préservée.
+- **`icon.ico` regénéré à partir du chat-bubble** (au lieu du fallback 3 spirales) — la barre de titre Windows + l'icône taskbar / alt-tab + l'icône des dialogues secondaires (Settings, Welcome, Bibliothèque, Historique) reflètent désormais le logo de l'app, pas un placeholder.
+
+### Step 3 — refonte CTA
+- **Bouton "Générer" hero plein-largeur** : suppression du badge "3" et du sous-titre verbeux qui se concurrençaient. La barre EST le bouton (height=56, font 16pt, `fill="both", expand=True`). Le texte mute déjà tout seul selon l'état de readiness ("↑ Choisis un Mega Prompt", "↑ Écris ton prompt de base") — plus besoin de labels d'accompagnement.
+- **Hauteur barre** : 72 → 84 px pour respirer.
+
+### Paramètres
+- **Boutons "↗ Obtenir" à droite de chaque clé API** : ouvre la console du provider directement dans le navigateur (Anthropic / OpenAI / Google AI Studio / Mistral / xAI). Plus besoin de chercher l'URL à la main.
+- **Fenêtre Paramètres 640×560 → 720×800** : tout s'affiche sans scroll (Clés API + 5 entries + Mises à jour + Annuler/Enregistrer).
+
+### Mega Prompts
+- **"00 Autonomie continue" durci** (5511 → 8581 chars) : passage en framing "OPÉRATEUR AUTONOME" (rôle contraint), réduction des motifs d'arrêt 4 → 3, liste exhaustive des 11 formulations interrogatives bannies, nouvelle règle 16 "Momentum maximum" (≥1 étape complète + démarrage de la suivante par message), auto-audit en 3 questions avant chaque message, exemples concrets de transformations méta-commentaires → action.
+
 ## v1.5.1 — 2026-05-06
 ### Bugfix UI
 - **Bouton "Générer" invisible** : sur les écrans où la fenêtre rentrait juste, le bouton était poussé hors-écran par les 8 cartes preset (en grille 2×4) cumulées au textarea + tags + sel_row. Refonte du layout principal en `grid` (au lieu de `pack`) avec `step3_bar` épinglé sur sa propre row dédiée (`row=4`, `height=72`, `grid_propagate(False)`) — le CTA est maintenant **toujours visible**, peu importe la hauteur de la fenêtre.

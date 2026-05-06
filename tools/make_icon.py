@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import _make_triskell_logo  # noqa: E402
+from app import _load_app_logo  # noqa: E402
 
 OUT_ICO = ROOT / "assets" / "icon.ico"
 OUT_PNG = ROOT / "assets" / "icon.png"
@@ -19,9 +19,10 @@ OUT_PNG = ROOT / "assets" / "icon.png"
 OUT_ICO.parent.mkdir(parents=True, exist_ok=True)
 
 # Multi-resolution ICO so Windows picks the right size in every context.
-# Generate a high-res master and let Pillow downsample for each requested size.
+# Generate a high-res master (chat-bubble brand logo, gradient or/blanc, fond
+# transparent) et laisse Pillow downsampler pour chaque taille demandée.
 sizes = [16, 32, 48, 64, 128, 256]
-master = _make_triskell_logo(256, "#08080F").convert("RGBA")
+master = _load_app_logo(256).convert("RGBA")
 master.save(
     OUT_ICO,
     format="ICO",
