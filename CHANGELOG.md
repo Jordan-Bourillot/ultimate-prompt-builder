@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.4 — 2026-05-07
+### Bouton "Améliorer le prompt de base" — fix définitif
+- **Plus de freeze de l'app** quand on clique : la modal `messagebox.showerror` qui apparaissait cachée derrière la fenêtre principale (impression de bloquage) est remplacée par un message persistant dans la status bar (warning visible, non-bloquant).
+- **Check pré-flight de la clé API** avant de lancer le worker : si la clé du provider sélectionné est vide, on affiche immédiatement un message clair `⚠ Clé API <provider> manquante. Ouvre Paramètres → onglet Clés API…` au lieu de lancer un worker qui échouerait silencieusement.
+- **Robustesse `str.format()`** : `_IMPROVE_META_PROMPT` utilise maintenant `replace("{user_prompt}", user)` au lieu de `format()` — plus de KeyError silencieuse si l'utilisateur tape `{` ou `}` dans son brouillon (ce qui bloquait le bouton à `⏳ Amélioration...` indéfiniment).
+- **Safety timeout 135 s** : si le provider IA ne répond jamais (réseau, hang…), le bouton se reset automatiquement avec un message lisible `Délai dépassé. Le provider IA n'a pas répondu en 2 min — réessayez, vérifiez votre clé API ou changez de modèle.`
+- **Logs détaillés** sur le flow Amélioration (`[improve] click detected`, `[improve.worker] start, calling provider`, `[improve.worker] response received len=…` ou `ProviderError: …`) pour debug rapide en cas de souci.
+
 ## v1.5.3 — 2026-05-06
 ### Logo polish
 - **Source = brand asset officiel landing** (`landing/public/img/icon.png` — chat bubble violet rempli, sparkles, version polie utilisée sur prompt-builder.triskell-studio.fr) au lieu de la version recolorée outline. Le brand est cohérent partout : landing + app desktop + taskbar Windows.

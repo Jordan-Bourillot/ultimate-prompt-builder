@@ -56,16 +56,26 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM ---- Copie sous l ancien nom legacy pour les v1.3.x installees ----
+REM Les v1.3.x ont UPDATE_INSTALLER_PATTERN="UltimatePromptBuilder_setup_*.exe"
+REM (avant le rebrand AlphaBeast). Sans cet alias, leur fnmatch retourne False
+REM et l auto-update ne trouve pas l installer dans la GitHub Release.
+if exist "installer_output\AlphaBeast_setup_!VER!.exe" (
+    copy /Y "installer_output\AlphaBeast_setup_!VER!.exe" "installer_output\UltimatePromptBuilder_setup_!VER!.exe" >nul
+    echo Alias legacy cree : UltimatePromptBuilder_setup_!VER!.exe
+)
+
 echo.
 echo ============================================================
 echo  TERMINE
 echo ============================================================
 echo  Installeur : installer_output\AlphaBeast_setup_!VER!.exe
+echo  Alias v1.3 : installer_output\UltimatePromptBuilder_setup_!VER!.exe
 echo.
 echo  Etape suivante :
 echo   1. Cree une release sur https://github.com/Jordan-Bourillot/ultimate-prompt-builder/releases/new
 echo   2. Tag : v!VER!
-echo   3. Upload AlphaBeast_setup_!VER!.exe comme asset
+echo   3. Upload LES DEUX .exe comme assets (les v1.3.x cherchent l ancien nom)
 echo   4. Publish release
 echo ============================================================
 pause

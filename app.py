@@ -2725,6 +2725,8 @@ class App(ctk.CTk):
     def _improve_input(self) -> None:
         """Envoie le prompt de base à l'IA pour le développer/structurer,
         puis remplace le contenu du textarea par la version améliorée."""
+        logger.info("[improve] click detected")
+
         if getattr(self, "_input_has_placeholder", False):
             self._set_status("Écris d'abord un brouillon à améliorer.", warn=True)
             return
@@ -2738,32 +2740,130 @@ class App(ctk.CTk):
         )
         model = self.model_var.get()
         api_keys = self.settings.get("api_keys", {})
-        meta = self._IMPROVE_META_PROMPT.format(user_prompt=user)
+        api_key_present = bool(api_keys.get(provider_id, "").strip())
+        logger.info(
+            "[improve] provider=%s model=%s api_key_present=%s prompt_len=%d",
+            provider_id, model, api_key_present, len(user),
+        )
 
-        self.improve_btn.configure(state="disabled", text="⏳  Amélioration...")
+        # Check pré-flight : si la clé est vide, on n'engage PAS le worker
+        # ni le loading indicator. On affiche un message clair et actionable
+        # dans la status bar (la modal showerror précédente pouvait apparaître
+        # cachée derrière la fenêtre principale → impression de freeze).
+        if not api_key_present:
+            provider_label = next(
+                (lbl for lbl, pid in self._provider_label_to_id.items() if pid == provider_id),
+                provider_id,
+            )
+            self._set_status(
+                f"⚠ Clé API {provider_label} manquante. Ouvre Paramètres → onglet Clés API "
+                f"pour la coller, puis réessaie.",
+                warn=True,
+            )
+            return
+        # str.format() casse si l'utilisateur tape `{` ou `}` dans son brouillon ;
+        # on remplace manuellement le placeholder pour éviter une KeyError
+        # silencieuse qui laissait le bouton bloqué en "⏳ Amélioration...".
+        meta = self._IMPROVE_META_PROMPT.replace("{user_prompt}", user)
+
+        self.improve_btn.configure(state="disabled", text="⏳  Amélioration en cours…")
         try:
             self.generate_btn.configure(state="disabled")
         except Exception:
             pass
-        self._set_status(f"Amélioration du prompt via {provider_id} / {model}...")
+        self._set_status(f"Amélioration du prompt via {provider_id} / {model}…")
         self._start_loading_indicator()
+        # Note: animation custom du bouton retirée temporairement (suspect d'avoir
+        # bloqué l'event loop tkinter). Le _start_loading_indicator anime déjà la
+        # status bar en bas → l'utilisateur voit que ça bosse.
+
+        # Safety timeout : si après 135s le worker n'a rien rendu (provider
+        # qui hang, exception non remontée…), on force le reset pour éviter
+        # la boucle infinie du loading indicator.
+        self._improve_safety_after_id = self.after(
+            135_000, self._improve_safety_timeout
+        )
 
         def worker() -> None:
+            logger.info("[improve.worker] start, calling provider")
             try:
                 resp = send_to_provider(provider_id, model, meta, api_keys)
+                logger.info("[improve.worker] response received len=%d", len(resp or ""))
             except ProviderError as exc:
+                logger.warning("[improve.worker] ProviderError: %s", exc)
                 self.after(0, lambda: self._on_improve_error(str(exc)))
                 return
             except Exception as exc:
-                logger.exception("unexpected provider error during improve")
+                logger.exception("[improve.worker] unexpected error: %s", exc)
                 self.after(0, lambda: self._on_improve_error(f"Erreur inattendue: {exc}"))
                 return
             self.after(0, lambda: self._on_improve_ok(resp))
 
         threading.Thread(target=worker, daemon=True).start()
+        logger.info("[improve] worker thread started")
+
+    def _cancel_improve_safety_timer(self) -> None:
+        after_id = getattr(self, "_improve_safety_after_id", None)
+        if after_id:
+            try:
+                self.after_cancel(after_id)
+            except Exception:
+                pass
+            self._improve_safety_after_id = None
+
+    # ----- Animation du bouton "Amélioration..." pendant le worker -----
+    # Spinner ASCII (universel, pas de dépendance à une font Unicode) +
+    # points qui pulsent. Sans animation, le bouton paraissait figé pendant
+    # les 5-30s d'appel API.
+    # Note: CTkButton.configure(text=...) ne re-render pas le label quand
+    # state="disabled" → on garde state="normal" et on bloque le re-clic
+    # via un flag interne (_improve_in_progress).
+    _IMPROVE_SPINNER_FRAMES = ("|", "/", "-", "\\")
+
+    def _start_improve_btn_anim(self) -> None:
+        self._improve_btn_anim = True
+        self._improve_btn_phase = 0
+        self._tick_improve_btn()
+
+    def _stop_improve_btn_anim(self) -> None:
+        self._improve_btn_anim = False
+
+    def _tick_improve_btn(self) -> None:
+        if not getattr(self, "_improve_btn_anim", False):
+            return
+        spinner = self._IMPROVE_SPINNER_FRAMES[
+            self._improve_btn_phase % len(self._IMPROVE_SPINNER_FRAMES)
+        ]
+        # Points qui pulsent (1 → 2 → 3 → 2 → 1) en parallèle du spinner
+        dots_n = (self._improve_btn_phase // 2) % 4
+        dots_count = dots_n if dots_n <= 2 else (4 - dots_n)
+        dots = "." * (dots_count + 1)
+        new_text = f"{spinner}  Amélioration{dots}"
+        try:
+            self.improve_btn.configure(text=new_text)
+        except Exception:
+            return  # widget détruit
+        self._improve_btn_phase += 1
+        # 250ms : assez fluide visuellement, et laisse de l'air à l'event loop
+        # tkinter pour traiter les autres events (clics, redraws normaux).
+        self.after(250, self._tick_improve_btn)
+
+    def _improve_safety_timeout(self) -> None:
+        """Filet de secours : si le bouton est encore en mode loading après
+        135s, on force le reset et on affiche une erreur lisible. Évite la
+        boucle infinie du spinner quand un provider hang sans remonter."""
+        if not getattr(self, "_loading", False):
+            return  # le flow normal a déjà tout reset
+        logger.warning("Improve safety timeout fired — forcing reset")
+        self._on_improve_error(
+            "Délai dépassé. Le provider IA n'a pas répondu en 2 min — "
+            "réessayez, vérifiez votre clé API ou changez de modèle."
+        )
 
     def _on_improve_ok(self, resp: str) -> None:
+        self._cancel_improve_safety_timer()
         self._stop_loading_indicator()
+        self._stop_improve_btn_anim()
         self.improve_btn.configure(state="normal", text="✨  Améliorer le prompt de base")
         try:
             self.generate_btn.configure(state="normal")
@@ -2791,14 +2891,19 @@ class App(ctk.CTk):
         self._set_status("Prompt amélioré.", ok=True)
 
     def _on_improve_error(self, msg: str) -> None:
+        self._cancel_improve_safety_timer()
         self._stop_loading_indicator()
+        self._stop_improve_btn_anim()
         self.improve_btn.configure(state="normal", text="✨  Améliorer le prompt de base")
         try:
             self.generate_btn.configure(state="normal")
         except Exception:
             pass
-        self._set_status(msg, warn=True)
-        messagebox.showerror("Erreur amélioration", msg)
+        # Erreur affichée dans la status bar (warn) — plus de modal showerror
+        # qui pouvait apparaître cachée derrière la fenêtre principale et
+        # donner l'impression que l'app était figée.
+        self._set_status(f"⚠ Amélioration : {msg}", warn=True)
+        logger.warning("[improve.error] %s", msg)
 
     def _clear_output(self) -> None:
         """Vide le textarea du prompt ultime généré. Bouton ✕ Effacer du panneau 4."""

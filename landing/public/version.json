@@ -1,7 +1,7 @@
 {
-  "version": "1.5.2",
-  "url": "https://github.com/Jordan-Bourillot/ultimate-prompt-builder/releases/download/v1.5.2/AlphaBeast_setup_1.5.2.exe",
-  "size": 19120049,
-  "released_at": "2026-05-06",
-  "notes": "Logo en miroir + icon.ico cohérent partout. Step 3 refondu : bouton Générer hero plein-largeur. Paramètres : liens '↗ Obtenir' pour les 5 clés API + fenêtre 720x800 sans scroll. Mega prompt 'Autonomie continue' durci (16 règles, 3 motifs d'arrêt, 11 questions bannies, momentum max, auto-audit)."
+  "version": "1.5.4",
+  "url": "https://github.com/Jordan-Bourillot/ultimate-prompt-builder/releases/download/v1.5.4/AlphaBeast_setup_1.5.4.exe",
+  "size": 19256942,
+  "released_at": "2026-05-07",
+  "notes": "Fix définitif du bouton 'Améliorer le prompt de base' : plus de freeze de l'app (modal showerror remplacée par message en status bar), check pré-flight de la clé API (message clair si manquante), safety timeout 135s, logs détaillés. Robustesse str.format si le brouillon contient { ou }."
 }

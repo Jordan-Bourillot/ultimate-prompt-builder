@@ -36,7 +36,7 @@ from typing import Callable, Optional
 logger = logging.getLogger("updater")
 
 # --- A configurer ---
-APP_VERSION = "1.5.3"
+APP_VERSION = "1.5.4"
 GITHUB_OWNER = "Jordan-Bourillot"
 GITHUB_REPO = "ultimate-prompt-builder"
 UPDATE_INSTALLER_PATTERN = "AlphaBeast_setup_*.exe"
