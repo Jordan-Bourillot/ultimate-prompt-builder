@@ -2080,6 +2080,17 @@ class App(ctk.CTk):
             command=self._open_welcome,
         ).pack(side="right", padx=(6, 6), pady=14)
 
+        # Slogan centré dans l'espace libre de la topbar (entre le brand et les
+        # boutons d'action). pack avec side="left", expand=True, fill="x" → la
+        # zone résiduelle est avalée et le label se centre dedans.
+        slogan = ctk.CTkLabel(
+            topbar,
+            text="Forge le prompt.  Dompte la bête.",
+            font=(RESOLVED_DISPLAY, 16, "bold"),
+            text_color=PALETTE["muted"],
+        )
+        slogan.pack(side="left", expand=True, fill="x", padx=20)
+
         # Main split
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.grid(row=2, column=0, sticky="nsew", padx=14, pady=14)
@@ -2095,10 +2106,11 @@ class App(ctk.CTk):
         )
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         left.grid_columnconfigure(0, weight=1)
-        # weight=1 laisse l'input absorber l'espace résiduel ; minsize=160 garantit
+        # weight=1 laisse l'input absorber l'espace résiduel ; minsize=90 garantit
         # qu'il n'est jamais écrasé à 0 mais reste compact pour libérer de la place
         # au reste (8 cartes preset + tags + sélection active) sur petits écrans.
-        left.grid_rowconfigure(1, weight=1, minsize=160)
+        # Le textarea scrolle en interne si l'utilisateur tape un prompt long.
+        left.grid_rowconfigure(1, weight=1, minsize=90)
 
         input_header = ctk.CTkFrame(left, fg_color="transparent")
         input_header.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 6))
@@ -2130,19 +2142,6 @@ class App(ctk.CTk):
             text_color=PALETTE["muted_dim"],
         )
         self.input_count.grid(row=0, column=2, sticky="e", padx=(0, 8))
-        # Bouton "Améliorer le prompt de base" — développe/structure le brouillon via l'IA sélectionnée
-        self.improve_btn = ctk.CTkButton(
-            input_header, text="✨  Améliorer le prompt de base",
-            width=210, height=28,
-            corner_radius=14,
-            font=(RESOLVED_BODY, 10, "bold"),
-            text_color=PALETTE["accent"],
-            fg_color="transparent",
-            hover_color=PALETTE["accent_dim"],
-            border_width=1, border_color=PALETTE["accent"],
-            command=self._improve_input,
-        )
-        self.improve_btn.grid(row=0, column=3, sticky="e", padx=(0, 6))
         # Bouton "Effacer" — vide le textarea en 1 clic
         ctk.CTkButton(
             input_header, text="✕  Effacer",
@@ -2154,7 +2153,7 @@ class App(ctk.CTk):
             hover_color=PALETTE["tag_bg_hover"],
             border_width=1, border_color=PALETTE["border_2"],
             command=self._clear_input,
-        ).grid(row=0, column=4, sticky="e")
+        ).grid(row=0, column=3, sticky="e")
 
         self.input_box = ctk.CTkTextbox(
             left,
@@ -2165,9 +2164,28 @@ class App(ctk.CTk):
             text_color=PALETTE["text"],
             border_width=1,
             border_color=PALETTE["border"],
-            height=140,  # initial hauteur ; l'expand de row 1 fait grossir si la place existe
+            height=100,  # initial hauteur ; l'expand de row 1 fait grossir si la place existe
         )
         self.input_box.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 8))
+
+        # Bouton "Améliorer le prompt de base" — flotte au coin bas-droit du textarea
+        # (place in_=textbox → suit ses dimensions quand row 1 grandit). fg_color opaque
+        # = panel_alt pour découper visuellement le bouton du fond du textarea.
+        self.improve_btn = ctk.CTkButton(
+            left, text="✨  Améliorer le prompt de base",
+            width=210, height=30,
+            corner_radius=15,
+            font=(RESOLVED_BODY, 10, "bold"),
+            text_color=PALETTE["accent"],
+            text_color_disabled=PALETTE["accent"],
+            fg_color=PALETTE["panel_alt"],
+            hover_color=PALETTE["accent_dim"],
+            border_width=1, border_color=PALETTE["accent"],
+            command=self._improve_input,
+        )
+        self.improve_btn.place(
+            in_=self.input_box, relx=1.0, rely=1.0, anchor="se", x=-10, y=-10,
+        )
         self.input_box.bind("<KeyRelease>", lambda _e: self._update_input_count())
         # Subtle placeholder behavior
         self._input_placeholder = (
@@ -2740,7 +2758,8 @@ class App(ctk.CTk):
         api_keys = self.settings.get("api_keys", {})
         meta = self._IMPROVE_META_PROMPT.format(user_prompt=user)
 
-        self.improve_btn.configure(state="disabled", text="⏳  Amélioration...")
+        self.improve_btn.configure(state="disabled")
+        self._start_improve_animation()
         try:
             self.generate_btn.configure(state="disabled")
         except Exception:
@@ -2764,6 +2783,7 @@ class App(ctk.CTk):
 
     def _on_improve_ok(self, resp: str) -> None:
         self._stop_loading_indicator()
+        self._stop_improve_animation()
         self.improve_btn.configure(state="normal", text="✨  Améliorer le prompt de base")
         try:
             self.generate_btn.configure(state="normal")
@@ -2792,6 +2812,7 @@ class App(ctk.CTk):
 
     def _on_improve_error(self, msg: str) -> None:
         self._stop_loading_indicator()
+        self._stop_improve_animation()
         self.improve_btn.configure(state="normal", text="✨  Améliorer le prompt de base")
         try:
             self.generate_btn.configure(state="normal")
@@ -3004,6 +3025,33 @@ class App(ctk.CTk):
         self.generate_btn.configure(state="normal")
         self._set_status(msg, warn=True)
         messagebox.showerror("Erreur IA", msg)
+
+    # ----- Animation du bouton "Améliorer le prompt" -----
+    # Spinner qui tourne + nombre de points qui varie, refresh ~120ms.
+    # Sans ça, les ~10s d'attente IA laissent croire que l'app a planté.
+
+    _IMPROVE_SPINNER_FRAMES = ("◐", "◓", "◑", "◒")
+
+    def _start_improve_animation(self) -> None:
+        self._improve_animating = True
+        self._improve_anim_phase = 0
+        self._tick_improve_animation()
+
+    def _stop_improve_animation(self) -> None:
+        self._improve_animating = False
+
+    def _tick_improve_animation(self) -> None:
+        if not getattr(self, "_improve_animating", False):
+            return
+        phase = self._improve_anim_phase
+        frame = self._IMPROVE_SPINNER_FRAMES[phase % len(self._IMPROVE_SPINNER_FRAMES)]
+        dots = "." * (1 + (phase % 3))
+        try:
+            self.improve_btn.configure(text=f"{frame}  Amélioration en cours{dots}")
+        except Exception:
+            return
+        self._improve_anim_phase = phase + 1
+        self.after(120, self._tick_improve_animation)
 
     # ----- Loading indicator (spinner-like animation in status label) -----
 
@@ -3322,6 +3370,21 @@ class App(ctk.CTk):
         megas = list(getattr(self, "selected_megas", []) or [])
         n = len(megas)
 
+        # Liste des (label, padding_horizontal) à wraplength dynamique. Un bind
+        # <Configure> sur cont met à jour les wraplength quand le panneau est
+        # redimensionné — sans ça, les longs textes débordent à droite.
+        self._preview_wrap_labels = []
+
+        def _on_preview_resize(event):
+            w = max(120, event.width - 20)
+            for lbl, pad in self._preview_wrap_labels:
+                try:
+                    lbl.configure(wraplength=max(120, w - pad))
+                except Exception:
+                    pass
+
+        cont.bind("<Configure>", _on_preview_resize)
+
         # ── Titre principal (centré, orange, gros) ───────────────────────
         ctk.CTkLabel(
             cont, text="✨   APERÇU DE LA STRUCTURE",
@@ -3350,19 +3413,29 @@ class App(ctk.CTk):
                 fg_color=PALETTE[color_key],
                 corner_radius=10,
             ).pack(side="left", padx=(0, 10))
-            ctk.CTkLabel(
+            # Titre : font réduit + wraplength pour ne pas déborder sur des
+            # panneaux étroits (ex: "INSTRUCTIONS COMPORTEMENTALES" est long).
+            title_lbl = ctk.CTkLabel(
                 header, text=title,
-                font=(RESOLVED_BODY, 16, "bold"),
+                font=(RESOLVED_BODY, 14, "bold"),
                 text_color=PALETTE[color_key],
                 anchor="w",
-            ).pack(side="left")
+                justify="left",
+                wraplength=320,
+            )
+            title_lbl.pack(side="left", fill="x", expand=True)
+            self._preview_wrap_labels.append((title_lbl, 90))
             # Sous-titre
-            ctk.CTkLabel(
+            sub_lbl = ctk.CTkLabel(
                 block, text=subtitle,
                 font=(RESOLVED_BODY, 11, "italic"),
                 text_color=PALETTE["muted"],
                 anchor="w",
-            ).pack(fill="x", padx=(40, 0), pady=(0, 6))
+                justify="left",
+                wraplength=300,
+            )
+            sub_lbl.pack(fill="x", padx=(40, 0), pady=(0, 6))
+            self._preview_wrap_labels.append((sub_lbl, 90))
             return block
 
         # ── 1) EN-TÊTE : méga-prompts actifs ─────────────────────────────
@@ -3372,18 +3445,26 @@ class App(ctk.CTk):
             "accent",
         )
         if n == 0:
-            ctk.CTkLabel(
+            l1 = ctk.CTkLabel(
                 b1, text="◌  aucun méga-prompt sélectionné",
                 font=(RESOLVED_BODY, 13, "italic"),
                 text_color=PALETTE["text"],
                 anchor="w",
-            ).pack(fill="x", padx=(40, 0), pady=(2, 0))
-            ctk.CTkLabel(
+                justify="left",
+                wraplength=300,
+            )
+            l1.pack(fill="x", padx=(40, 0), pady=(2, 0))
+            self._preview_wrap_labels.append((l1, 90))
+            l2 = ctk.CTkLabel(
                 b1, text="choisis un preset (Option A) ou ajoute-en un par un",
                 font=(RESOLVED_BODY, 11),
                 text_color=PALETTE["muted_dim"],
                 anchor="w",
-            ).pack(fill="x", padx=(60, 0), pady=(0, 6))
+                justify="left",
+                wraplength=280,
+            )
+            l2.pack(fill="x", padx=(60, 0), pady=(0, 6))
+            self._preview_wrap_labels.append((l2, 110))
         else:
             ctk.CTkLabel(
                 b1, text=f"{n} méga-prompt{'s' if n > 1 else ''} actif{'s' if n > 1 else ''} :",
@@ -3420,18 +3501,26 @@ class App(ctk.CTk):
             "violet",
         )
         if n == 0:
-            ctk.CTkLabel(
+            l3 = ctk.CTkLabel(
                 b2, text="◌  vide pour l'instant",
                 font=(RESOLVED_BODY, 13, "italic"),
                 text_color=PALETTE["text"],
                 anchor="w",
-            ).pack(fill="x", padx=(40, 0), pady=(2, 0))
-            ctk.CTkLabel(
+                justify="left",
+                wraplength=300,
+            )
+            l3.pack(fill="x", padx=(40, 0), pady=(2, 0))
+            self._preview_wrap_labels.append((l3, 90))
+            l4 = ctk.CTkLabel(
                 b2, text="le bloc se remplira dès qu'un méga-prompt sera ajouté",
                 font=(RESOLVED_BODY, 11),
                 text_color=PALETTE["muted_dim"],
                 anchor="w",
-            ).pack(fill="x", padx=(60, 0), pady=(0, 6))
+                justify="left",
+                wraplength=280,
+            )
+            l4.pack(fill="x", padx=(60, 0), pady=(0, 6))
+            self._preview_wrap_labels.append((l4, 110))
         else:
             for i, mp in enumerate(megas, 1):
                 item = ctk.CTkFrame(
@@ -3491,18 +3580,26 @@ class App(ctk.CTk):
                 wraplength=600,
             ).pack(fill="x", padx=(40, 16), pady=(2, 6))
         else:
-            ctk.CTkLabel(
+            l5 = ctk.CTkLabel(
                 b3, text="◌  ton brouillon apparaîtra ici",
                 font=(RESOLVED_BODY, 13, "italic"),
                 text_color=PALETTE["text"],
                 anchor="w",
-            ).pack(fill="x", padx=(40, 0), pady=(2, 0))
-            ctk.CTkLabel(
+                justify="left",
+                wraplength=300,
+            )
+            l5.pack(fill="x", padx=(40, 0), pady=(2, 0))
+            self._preview_wrap_labels.append((l5, 90))
+            l6 = ctk.CTkLabel(
                 b3, text="écris-le dans la zone 1, à gauche",
                 font=(RESOLVED_BODY, 11),
                 text_color=PALETTE["muted_dim"],
                 anchor="w",
-            ).pack(fill="x", padx=(60, 0), pady=(0, 6))
+                justify="left",
+                wraplength=280,
+            )
+            l6.pack(fill="x", padx=(60, 0), pady=(0, 6))
+            self._preview_wrap_labels.append((l6, 110))
 
         # ── Pied : appel à l'action (centré) ─────────────────────────────
         ctk.CTkFrame(cont, fg_color="transparent", height=18).pack()
